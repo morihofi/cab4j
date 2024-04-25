@@ -67,7 +67,7 @@ public class CfHeader {
         bb.putShort(cFolders);
         bb.putShort(cFiles);
         bb.putShort((short) 0); //Flags -> all zero
-        bb.putShort((short) 0); //Set ID, should be random
+        bb.putShort((short) 0x0622); //Set ID, should be random
         bb.putShort((short) 0); //iCabinet is sequential number of this cabinet in a multicabinet set. (zero is first)
         // cbCFHeader, cbCFFolder, cbCFData, abReserve,
         // szCabinetPrev, szDiskPrev, szCabinetNext, szDiskNext
