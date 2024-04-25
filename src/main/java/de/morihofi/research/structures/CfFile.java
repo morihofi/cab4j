@@ -90,10 +90,14 @@ public class CfFile {
         this.szName = szName;
     }
 
+    public int getByteSize(){
+        return 16 + szName.length + 1;
+    }
+
 
     public ByteBuffer build() {
 
-        ByteBuffer bb = ByteBuffer.allocate(16 + szName.length + 1);
+        ByteBuffer bb = ByteBuffer.allocate(getByteSize());
         bb.order(ByteOrder.LITTLE_ENDIAN);
 
         bb.putInt(cbFile); // 4 bytes

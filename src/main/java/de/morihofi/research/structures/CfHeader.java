@@ -4,12 +4,12 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public class CfHeader {
-    private final byte[] SIGNATURE = {0x4d, 0x53, 0x43, 0x46};
-    private final int RESERVED_1 = 0;
-    private final int RESERVED_2 = 0;
-    private final int RESERVED_3 = 0;
-    private final byte VERSION_MINOR = 3;
-    private final byte VERSION_MAJOR = 1;
+    private static final byte[] SIGNATURE = {0x4d, 0x53, 0x43, 0x46};
+    private static final int RESERVED_1 = 0;
+    private static final int RESERVED_2 = 0;
+    private static final int RESERVED_3 = 0;
+    private static final byte VERSION_MINOR = 3;
+    private static final byte VERSION_MAJOR = 1;
 
     private int cbCabinet = 0;
     private short cFolders = 0;
@@ -32,8 +32,28 @@ public class CfHeader {
         this.cFiles = cFiles;
     }
 
+    public int getCbCabinet() {
+        return cbCabinet;
+    }
+
+    public short getcFolders() {
+        return cFolders;
+    }
+
+    public short getcFiles() {
+        return cFiles;
+    }
+
+    public int getCoffFiles() {
+        return coffFiles;
+    }
+
+    public int getByteSize() {
+        return SIGNATURE.length + 32;
+    }
+
     public ByteBuffer build() {
-        ByteBuffer bb = ByteBuffer.allocate(SIGNATURE.length + 32);
+        ByteBuffer bb = ByteBuffer.allocate(getByteSize());
         bb.order(ByteOrder.LITTLE_ENDIAN);
 
         bb.put(SIGNATURE);

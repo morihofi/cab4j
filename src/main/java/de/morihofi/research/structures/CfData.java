@@ -33,9 +33,13 @@ public class CfData {
     }
 
 
+    public int getByteSize(){
+        return 8;
+    }
+
     public ByteBuffer build() {
 
-        ByteBuffer bb = ByteBuffer.allocate(8);
+        ByteBuffer bb = ByteBuffer.allocate(getByteSize());
         bb.order(ByteOrder.LITTLE_ENDIAN);
 
         bb.putInt(csum); // 4 bytes
