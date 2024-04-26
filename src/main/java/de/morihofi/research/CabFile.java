@@ -83,7 +83,7 @@ public class CabFile {
         CfData cfData = new CfData();
         cfData.setCbUncomp((short) cfFileSizeUncompressed); //Uncompressed size
         cfData.setCbData((short) cfFileSizeUncompressed); //Compressed size
-        cfData.setCsum(calculateCsum(cfFileSizeUncompressed));
+        cfData.setCsum(calculateCsum(cfFileSizeUncompressed)); //Checksum
 
         cfFolder.setTypeCompress(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_NONE);
         cfFolder.setcCfData((short) 1); //Specifies the number of CFDATA structures for this folder that are actually in this cabinet
@@ -95,6 +95,7 @@ public class CabFile {
         // Header was changed, so adjust folder
         cfFolder.setCoffCabStart(cfHeader.getByteSize() + cfFolder.getByteSize() + cfFileOffsets); // Specifies the absolute file offset of the first CFDATA field block for the folder.
 
+        // Glue everything together
         ByteBuffer cabinetBuffer = ByteBuffer.allocate(cfHeader.getCbCabinet());
         cabinetBuffer.order(ByteOrder.LITTLE_ENDIAN);
         cabinetBuffer.put(cfHeader.build());
