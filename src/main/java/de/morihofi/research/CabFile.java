@@ -32,8 +32,19 @@ public class CabFile {
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().getClass());
 
 
-    public void addFile(String filename, byte[] byteBuffer) {
-        files.put(filename, byteBuffer);
+    public void addFile(String filename, byte[] bytes) {
+
+        //Check if we can add files
+        if (files.size() > (int) 0xFFFF) {
+            throw new IllegalArgumentException("CAB File limit reached");
+        }
+
+        //Check if file bytes are too big -> can end in buffer overflow
+        if (bytes.length > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("Byte size for file \"" + filename + "\" is too large (" + bytes.length + " bytes). Max allowed size is " + Short.MAX_VALUE + " bytes");
+        }
+
+        files.put(filename, bytes);
     }
 
     private void addFile(String filename, Path path) throws IOException {
@@ -142,6 +153,7 @@ public class CabFile {
 
         cabFile.addFile("hello.c", Paths.get("test/hello.c"));
         cabFile.addFile("welcome.c", Paths.get("test/welcome.c"));
+        // cabFile.addFile("MS-CAB.pdf", Paths.get("docu/[MS-CAB].pdf"));
 
         ByteBuffer cabFileBuffer = cabFile.createCabinet();
 
