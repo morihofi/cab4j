@@ -37,4 +37,20 @@ public class CabExtractorTest {
         assertArrayEquals(helloArr, extractedHello);
         assertArrayEquals(welcomeArr, extractedWelcome);
     }
+
+    @Test
+    public void addFileFromPath() throws Exception {
+        CabFile cabFile = new CabFile();
+        cabFile.addFile("hello.c", Paths.get("test/hello.c"));
+
+        ByteBuffer buf = cabFile.createCabinet();
+
+        Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
+
+        byte[] helloFile = Files.readAllBytes(Paths.get("test/hello.c"));
+        byte[] extractedHello = new byte[extracted.get("hello.c").remaining()];
+        extracted.get("hello.c").duplicate().get(extractedHello);
+
+        assertArrayEquals(helloFile, extractedHello);
+    }
 }
