@@ -10,7 +10,7 @@ public class CfFolder {
 
     /* private int abReserve; optional */
     public enum COMPRESS_TYPE {
-        TCOMP_MASK_TYPE(0x000F),
+        TCOMP_MASK_TYPE(0x000F), // Do not use that in your code, this is not for usage intended.
         TCOMP_TYPE_NONE(0x0000),
         TCOMP_TYPE_MSZIP(0x0001),
         TCOMP_TYPE_QUANTUM(0x0002),

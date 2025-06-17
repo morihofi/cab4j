@@ -229,7 +229,8 @@ public class CabFile {
                 }
                 byte[] comp = bos.toByteArray();
                 dataBlock = ByteBuffer.wrap(comp);
-            } else if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX) {
+            } else if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX ||
+                       compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_QUANTUM) {
                 java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
                 byte[] arr = new byte[folderBuf.remaining()];
                 folderBuf.duplicate().get(arr);
@@ -376,7 +377,7 @@ public class CabFile {
         CabFile cabFile = new CabFile();
         cabFile.setEnableChecksum(true);
 
-        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX);
+        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_QUANTUM);
         cabFile.addFile("hello.c", Paths.get("test/hello.c"));
         cabFile.addFile("welcome.c", Paths.get("test/welcome.c"));
         // cabFile.addFile("MS-CAB.pdf", Paths.get("docu/[MS-CAB].pdf"));

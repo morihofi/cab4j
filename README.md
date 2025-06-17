@@ -6,22 +6,9 @@ It was created using the [official Microsoft CAB Documentation](docu/%5BMS-CAB%5
 - Checksum generation supported
 - Test files are located in `test/`-Directory, this contains the test cab from the pdf in `doku/` directory
 - This implementation makes use of only Java ByteBuffers
-- Currently, there is no compression support. Just archiving the files as they're on disk
-- Uncompressed and MSZIP compression support
+- Uncompressed, MSZIP, Quantum and LZX compression support
 - Recursive directory packing with subfolder support
 - Splitting archives into multiple cabinets
-
-# Disclaimer
-This version is NOT production ready, 'cause it contains a few bugs and some miscalculated offsets
-
-# Future goals
-- reproduce the test files 1:1
-- support compression 
-- support extracting
-- support multiple disks
-- Verification of file limits
-- Attribute support
-- Folder support
 
 ## File attributes
 

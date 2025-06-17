@@ -143,6 +143,23 @@ public class CabExtractor {
                     }
                     uncompressed = ByteBuffer.wrap(out);
                     break;
+                case TCOMP_TYPE_QUANTUM:
+                    byte[] qBytes = new byte[dataSlice.remaining()];
+                    dataSlice.get(qBytes);
+                    java.io.ByteArrayInputStream qbis = new java.io.ByteArrayInputStream(qBytes);
+                    byte[] qOut = new byte[Short.toUnsignedInt(cbUncomp)];
+                    try (org.tukaani.xz.XZInputStream qlz = new org.tukaani.xz.XZInputStream(qbis)) {
+                        int qlen = qlz.read(qOut);
+                        if (qlen < qOut.length) {
+                            byte[] tmp = new byte[qlen];
+                            System.arraycopy(qOut, 0, tmp, 0, qlen);
+                            qOut = java.util.Arrays.copyOf(tmp, qlen);
+                        }
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException("Quantum decompression failed", e);
+                    }
+                    uncompressed = ByteBuffer.wrap(qOut);
+                    break;
                 case TCOMP_TYPE_LZX:
                     byte[] lzxBytes = new byte[dataSlice.remaining()];
                     dataSlice.get(lzxBytes);
