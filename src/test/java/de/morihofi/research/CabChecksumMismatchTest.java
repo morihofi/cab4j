@@ -4,8 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+
+import de.morihofi.research.TestData;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -13,7 +13,7 @@ public class CabChecksumMismatchTest {
 
     @Test
     public void extractionFailsOnChecksumMismatch() throws Exception {
-        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
 
         CabFile cabFile = new CabFile();
         cabFile.addFile("hello.c", hello);

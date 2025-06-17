@@ -7,8 +7,6 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -99,8 +97,8 @@ public class CabAdvancedTest {
     }
 
     private static ByteBuffer createSampleCab() throws Exception {
-        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
-        ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
+        ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
+        ByteBuffer welcome = ByteBuffer.wrap(TestData.WELCOME_C);
 
         CabFile cabFile = new CabFile();
         cabFile.addFile("hello.c", hello);
@@ -110,7 +108,7 @@ public class CabAdvancedTest {
     }
 
     private static ByteBuffer createAttribCab() throws Exception {
-        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
         CabFile cabFile = new CabFile();
         cabFile.addFile("hello.c", hello, (short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN));
         return cabFile.createCabinet();
@@ -127,7 +125,7 @@ public class CabAdvancedTest {
 
     @Test
     public void mszipCompression() throws Exception {
-        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
         CabFile cabFile = new CabFile();
         cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
         cabFile.addFile("hello.c", hello);
@@ -139,8 +137,8 @@ public class CabAdvancedTest {
 
     @Test
     public void multiFolderCabinet() throws Exception {
-        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
-        ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
+        ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
+        ByteBuffer welcome = ByteBuffer.wrap(TestData.WELCOME_C);
 
         CabFile cabFile = new CabFile();
         cabFile.addFile("hello.c", hello, (short) 0, (short) 0);
