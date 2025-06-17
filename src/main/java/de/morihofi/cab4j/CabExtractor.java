@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.DosFileAttributeView;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.tukaani.xz.XZInputStream;
 
 public class CabExtractor {
 
@@ -141,6 +142,23 @@ public class CabExtractor {
                         inflater.end();
                     }
                     uncompressed = ByteBuffer.wrap(out);
+                    break;
+                case TCOMP_TYPE_LZX:
+                    byte[] lzxBytes = new byte[dataSlice.remaining()];
+                    dataSlice.get(lzxBytes);
+                    java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(lzxBytes);
+                    byte[] lzxOut = new byte[Short.toUnsignedInt(cbUncomp)];
+                    try (org.tukaani.xz.XZInputStream lz = new org.tukaani.xz.XZInputStream(bis)) {
+                        int len = lz.read(lzxOut);
+                        if (len < lzxOut.length) {
+                            byte[] tmp = new byte[len];
+                            System.arraycopy(lzxOut, 0, tmp, 0, len);
+                            lzxOut = java.util.Arrays.copyOf(tmp, len);
+                        }
+                    } catch (java.io.IOException e) {
+                        throw new IllegalStateException("LZX decompression failed", e);
+                    }
+                    uncompressed = ByteBuffer.wrap(lzxOut);
                     break;
                 default:
                     throw new UnsupportedOperationException("Unsupported compression type: " + comp);

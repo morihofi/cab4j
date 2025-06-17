@@ -25,6 +25,8 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
+import org.tukaani.xz.XZOutputStream;
+import org.tukaani.xz.LZMA2Options;
 
 public class CabFile {
 
@@ -227,6 +229,17 @@ public class CabFile {
                 }
                 byte[] comp = bos.toByteArray();
                 dataBlock = ByteBuffer.wrap(comp);
+            } else if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX) {
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                byte[] arr = new byte[folderBuf.remaining()];
+                folderBuf.duplicate().get(arr);
+                org.tukaani.xz.LZMA2Options opts = new org.tukaani.xz.LZMA2Options();
+                opts.setDictSize(1 << 16);
+                try (org.tukaani.xz.XZOutputStream xzOut = new org.tukaani.xz.XZOutputStream(bos, opts)) {
+                    xzOut.write(arr);
+                }
+                byte[] comp = bos.toByteArray();
+                dataBlock = ByteBuffer.wrap(comp);
             } else {
                 dataBlock = folderBuf.duplicate();
             }
@@ -363,7 +376,7 @@ public class CabFile {
         CabFile cabFile = new CabFile();
         cabFile.setEnableChecksum(true);
 
-        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
+        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX);
         cabFile.addFile("hello.c", Paths.get("test/hello.c"));
         cabFile.addFile("welcome.c", Paths.get("test/welcome.c"));
         // cabFile.addFile("MS-CAB.pdf", Paths.get("docu/[MS-CAB].pdf"));
