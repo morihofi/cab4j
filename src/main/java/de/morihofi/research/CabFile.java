@@ -29,6 +29,20 @@ public class CabFile {
     private short cabinetIndex = 0;
 
     /**
+     * Maximum amount of files allowed in a single cabinet file as specified in
+     * the MS-CAB documentation.
+     */
+    public static final int MAX_FILES = 0xFFFF;
+
+    /**
+     * Maximum uncompressed size of an input file (in bytes) that can be stored
+     * in a cabinet file. This value originates from the official specification
+     * and represents the largest value that fits into the 32‑bit file size
+     * fields.
+     */
+    public static final int MAX_FILE_SIZE = 0x7FFF8000;
+
+    /**
      * Logger
      */
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -36,14 +50,16 @@ public class CabFile {
 
     public void addFile(String filename, ByteBuffer bytes) {
 
-        //Check if we can add files
-        if (files.size() > (int) 0xFFFF) {
+        // Check if we can add files
+        if (files.size() >= MAX_FILES) {
             throw new IllegalArgumentException("CAB File limit reached");
         }
 
-        //Check if file bytes are too big -> can end in buffer overflow
-        if (bytes.remaining() > Short.MAX_VALUE) {
-            throw new IllegalArgumentException("Byte size for file \"" + filename + "\" is too large (" + bytes.remaining() + " bytes). Max allowed size is " + Short.MAX_VALUE + " bytes");
+        // Check if file bytes are too big -> can end in buffer overflow
+        if (bytes.remaining() > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException(
+                    "Byte size for file \"" + filename + "\" is too large (" + bytes.remaining()
+                            + " bytes). Max allowed size is " + MAX_FILE_SIZE + " bytes");
         }
 
         files.put(filename, bytes);
