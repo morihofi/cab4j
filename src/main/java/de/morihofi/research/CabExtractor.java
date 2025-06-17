@@ -7,7 +7,7 @@ import java.util.Map;
 
 public class CabExtractor {
 
-    public static Map<String, byte[]> extract(ByteBuffer cabBuffer) {
+    public static Map<String, ByteBuffer> extract(ByteBuffer cabBuffer) {
         ByteBuffer buffer = cabBuffer.duplicate();
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
@@ -71,10 +71,14 @@ public class CabExtractor {
             buffer.getShort(); // cbUncomp
         }
 
-        Map<String, byte[]> result = new LinkedHashMap<>();
+        Map<String, ByteBuffer> result = new LinkedHashMap<>();
         for (FileEntry fe : files) {
-            byte[] data = new byte[fe.size];
-            buffer.get(data);
+            ByteBuffer slice = buffer.slice();
+            slice.limit(fe.size);
+            ByteBuffer data = ByteBuffer.allocate(fe.size);
+            data.put(slice);
+            data.flip();
+            buffer.position(buffer.position() + fe.size);
             result.put(fe.name, data);
         }
 

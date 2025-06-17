@@ -1,40 +1,42 @@
 package de.morihofi.research.util;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
+/**
+ * Helper methods for checksum calculation.
+ */
 public class ChecksumHelper {
 
-    public static int byteArrayToInt(byte[] bytes){
-        return ((bytes[0] & 0xFF) << 24) | ((bytes[1] & 0xFF) << 16)
-                | ((bytes[2] & 0xFF) << 8) | (bytes[3] & 0xFF);
-    }
+    /**
+     * Calculates the CAB checksum for the supplied data block. The algorithm
+     * implements the procedure described in section 3.1 of the MS-CAB
+     * specification. The checksum is computed by XOR-ing all 32&nbsp;bit little
+     * endian words of the data. Remaining bytes (1&ndash;3) are appended in
+     * reverse order and padded with zeroes.
+     *
+     * @param data data over which the checksum should be calculated
+     * @return checksum value
+     */
+    public static int cabChecksum(ByteBuffer data) {
+        ByteBuffer buf = data.duplicate();
+        buf.order(ByteOrder.LITTLE_ENDIAN);
 
-    public static byte[] calculateChecksum(byte[] data) {
-        int n = data.length;
-        byte[] C = new byte[4];
-
-        for (int i = 0; i < 4; i++) {
-            C[i] = (byte) calculateS(i + 1, n, data);
+        int csum = 0;
+        while (buf.remaining() >= 4) {
+            csum ^= buf.getInt();
         }
 
-        return C;
-    }
-
-    private static int calculateS(int b, int n, byte[] data) {
-        if (b > n % 4 && b <= n) {
-            return data[n - b] & 0xFF;
-        } else if (b <= n % 4) {
-            return data[n - b] & 0xFF;
-        } else {
-            return calculateS(b - 4, n, data) ^ (data[n - (b % n)] & 0xFF);
+        if (buf.remaining() > 0) {
+            int word = 0;
+            int shift = 0;
+            for (int i = buf.limit() - 1; i >= buf.position(); i--) {
+                word |= (buf.get(i) & 0xFF) << shift;
+                shift += 8;
+            }
+            csum ^= word;
         }
-    }
 
-    public static void main(String[] args) {
-        byte[] data = { /* Ihr Datenarray */ };
-        byte[] checksum = calculateChecksum(data);
-
-        System.out.println("Die berechnete Prüfsumme ist:");
-        for (byte value : checksum) {
-            System.out.printf("%02X ", value);
-        }
+        return csum;
     }
 }

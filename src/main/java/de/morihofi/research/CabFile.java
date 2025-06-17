@@ -15,7 +15,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -23,16 +22,16 @@ import java.util.*;
 
 public class CabFile {
 
-    private final Map<String, byte[]> files = new LinkedHashMap<>();
-    private boolean enableChecksum = false;
+    private final Map<String, ByteBuffer> files = new LinkedHashMap<>();
+    private boolean enableChecksum = true;
 
     /**
      * Logger
      */
-    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().getClass());
+    private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
 
-    public void addFile(String filename, byte[] bytes) {
+    public void addFile(String filename, ByteBuffer bytes) {
 
         //Check if we can add files
         if (files.size() > (int) 0xFFFF) {
@@ -40,15 +39,19 @@ public class CabFile {
         }
 
         //Check if file bytes are too big -> can end in buffer overflow
-        if (bytes.length > Short.MAX_VALUE) {
-            throw new IllegalArgumentException("Byte size for file \"" + filename + "\" is too large (" + bytes.length + " bytes). Max allowed size is " + Short.MAX_VALUE + " bytes");
+        if (bytes.remaining() > Short.MAX_VALUE) {
+            throw new IllegalArgumentException("Byte size for file \"" + filename + "\" is too large (" + bytes.remaining() + " bytes). Max allowed size is " + Short.MAX_VALUE + " bytes");
         }
 
         files.put(filename, bytes);
     }
 
+    public void addFile(String filename, byte[] bytes) {
+        addFile(filename, ByteBuffer.wrap(bytes));
+    }
+
     private void addFile(String filename, Path path) throws IOException {
-        addFile(filename, Files.readAllBytes(path));
+        addFile(filename, FileUtils.readFile(path));
     }
 
     public ByteBuffer createCabinet() throws IOException {
@@ -66,15 +69,15 @@ public class CabFile {
         List<CfFile> cfFileDefinitions = new ArrayList<>();
         int cfFileOffsets = 0;
         int cfFileSizeUncompressed = 0;
-        for (Map.Entry<String, byte[]> entry : files.entrySet()) {
+        for (Map.Entry<String, ByteBuffer> entry : files.entrySet()) {
 
             String fileName = entry.getKey();
-            byte[] fileByte = entry.getValue();
+            ByteBuffer fileByte = entry.getValue();
 
-            LOG.info("Creating CFFile entry for file {} with file contents of {} byte", fileName, fileByte.length);
+            LOG.info("Creating CFFile entry for file {} with file contents of {} byte", fileName, fileByte.remaining());
 
             CfFile cfFile = new CfFile();
-            cfFile.setCbFile(fileByte.length); //Specifies the uncompressed size of this file, in bytes
+            cfFile.setCbFile(fileByte.remaining()); //Specifies the uncompressed size of this file, in bytes
             cfFile.setiFolder((short) 0);
             cfFile.setDate((short) 0); //Date of this file, in the format ((year–1980) << 9)+(month << 5)+(day), where month={1..12} and day={1..31}. This "date" is typically considered the "last modified" date in local time, but the actual definition is application-defined
             cfFile.setTime((short) 0); //Time of this file, in the format (hour << 11)+(minute << 5)+(seconds/2), where hour={0..23}. This "time" is typically considered the "last modified" time in local time, but the actual definition is application-defined.
@@ -94,7 +97,7 @@ public class CabFile {
         CfData cfData = new CfData();
         cfData.setCbUncomp((short) cfFileSizeUncompressed); //Uncompressed size
         cfData.setCbData((short) cfFileSizeUncompressed); //Compressed size
-        cfData.setCsum(calculateCsum(cfFileSizeUncompressed)); //Checksum
+        cfData.setCsum(calculateCsum()); //Checksum
 
         cfFolder.setTypeCompress(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_NONE);
         cfFolder.setcCfData((short) 1); //Specifies the number of CFDATA structures for this folder that are actually in this cabinet
@@ -117,11 +120,13 @@ public class CabFile {
         cabinetBuffer.put(cfData.build());
 
 
-        for (byte[] fileByteBuffer : files.values()) {
+        for (ByteBuffer fileByteBuffer : files.values()) {
             LOG.info("Adding file, cab buffer position before: {}", cabinetBuffer.position());
-            LOG.info("File size: {} bytes", fileByteBuffer.length);
+            LOG.info("File size: {} bytes", fileByteBuffer.remaining());
 
-            cabinetBuffer.put(fileByteBuffer);
+            ByteBuffer dup = fileByteBuffer.duplicate();
+            dup.position(0);
+            cabinetBuffer.put(dup);
 
             LOG.info("Cab-Buffer position after: {}", cabinetBuffer.position());
         }
@@ -132,9 +137,29 @@ public class CabFile {
         return cabinetBuffer;
     }
 
-    private int calculateCsum(int cfFileSizeUncompressed) {
-        /* This is currently not implemented */
-        return 0;
+    private int calculateCsum() {
+        if (!enableChecksum) {
+            return 0;
+        }
+
+        int cbData = 0;
+        for (ByteBuffer bb : files.values()) {
+            cbData += bb.remaining();
+        }
+
+        ByteBuffer checksumBuffer = ByteBuffer.allocate(cbData + 4);
+        checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
+        checksumBuffer.putShort((short) cbData); // cbData
+        checksumBuffer.putShort((short) cbData); // cbUncomp
+
+        for (ByteBuffer bb : files.values()) {
+            ByteBuffer dup = bb.duplicate();
+            dup.position(0);
+            checksumBuffer.put(dup);
+        }
+
+        checksumBuffer.flip();
+        return ChecksumHelper.cabChecksum(checksumBuffer);
     }
 
     public boolean isEnableChecksum() {
