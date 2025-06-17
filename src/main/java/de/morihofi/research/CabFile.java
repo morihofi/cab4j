@@ -81,9 +81,9 @@ public class CabFile {
             cfFile.setAttribs((short) 0); //Attributes of this file
             cfFile.setSzName(fileName.getBytes(StandardCharsets.UTF_8)); //Filename
 
-            if (cfFileOffsets > 0) {
-                cfFile.setUoffFolderStart(cfHeader.getByteSize() + cfFolder.getByteSize() + cfFileOffsets + 9);
-            }
+            // The uoffFolderStart value represents the uncompressed offset of
+            // the file's data inside the folder
+            cfFile.setUoffFolderStart(cfFileSizeUncompressed);
 
             cfFileOffsets += cfFile.getByteSize();
             cfFileSizeUncompressed += cfFile.getCbFile();
