@@ -1,4 +1,4 @@
-package de.morihofi.research;
+package de.morihofi.cab4j;
 
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
@@ -9,8 +9,6 @@ import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-
-import de.morihofi.research.TestData;
 
 import static org.junit.jupiter.api.Assertions.*;
 

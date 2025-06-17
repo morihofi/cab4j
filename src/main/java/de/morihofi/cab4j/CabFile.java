@@ -1,11 +1,11 @@
-package de.morihofi.research;
+package de.morihofi.cab4j;
 
-import de.morihofi.research.file.FileUtils;
-import de.morihofi.research.structures.CfData;
-import de.morihofi.research.structures.CfFile;
-import de.morihofi.research.structures.CfFolder;
-import de.morihofi.research.structures.CfHeader;
-import de.morihofi.research.util.ChecksumHelper;
+import de.morihofi.cab4j.file.FileUtils;
+import de.morihofi.cab4j.structures.CfData;
+import de.morihofi.cab4j.structures.CfFile;
+import de.morihofi.cab4j.structures.CfFolder;
+import de.morihofi.cab4j.structures.CfHeader;
+import de.morihofi.cab4j.util.ChecksumHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

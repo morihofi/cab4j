@@ -1,4 +1,4 @@
-package de.morihofi.research;
+package de.morihofi.cab4j;
 
 import org.junit.jupiter.api.Test;
 

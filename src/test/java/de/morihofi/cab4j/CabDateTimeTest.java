@@ -1,7 +1,4 @@
-package de.morihofi.research;
-
-import de.morihofi.research.CabExtractor;
-import de.morihofi.research.CabFile;
+package de.morihofi.cab4j;
 
 import java.nio.ByteBuffer;
 import java.nio.file.Files;

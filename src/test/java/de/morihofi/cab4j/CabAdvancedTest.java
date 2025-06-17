@@ -1,8 +1,8 @@
-package de.morihofi.research;
+package de.morihofi.cab4j;
 
-import de.morihofi.research.structures.CfFile;
-import de.morihofi.research.structures.CfFolder;
-import de.morihofi.research.util.ChecksumHelper;
+import de.morihofi.cab4j.structures.CfFile;
+import de.morihofi.cab4j.structures.CfFolder;
+import de.morihofi.cab4j.util.ChecksumHelper;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;

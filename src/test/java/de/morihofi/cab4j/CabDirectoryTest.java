@@ -1,4 +1,4 @@
-package de.morihofi.research;
+package de.morihofi.cab4j;
 
 import org.junit.jupiter.api.Test;
 
@@ -13,8 +13,6 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import de.morihofi.research.TestData;
 
 import static org.junit.jupiter.api.Assertions.*;
 

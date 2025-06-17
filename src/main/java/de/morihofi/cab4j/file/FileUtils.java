@@ -1,4 +1,4 @@
-package de.morihofi.research.file;
+package de.morihofi.cab4j.file;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;

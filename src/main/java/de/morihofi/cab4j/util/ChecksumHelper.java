@@ -1,4 +1,4 @@
-package de.morihofi.research.util;
+package de.morihofi.cab4j.util;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
