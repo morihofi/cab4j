@@ -19,11 +19,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class CabFile {
 
     private final Map<String, ByteBuffer> files = new LinkedHashMap<>();
     private boolean enableChecksum = true;
+    private Short cabinetSetId = null;
+    private short cabinetIndex = 0;
 
     /**
      * Logger
@@ -50,7 +53,16 @@ public class CabFile {
         addFile(filename, ByteBuffer.wrap(bytes));
     }
 
-    private void addFile(String filename, Path path) throws IOException {
+    /**
+     * Adds a file from the given path to the cabinet.
+     *
+     * @param filename file name inside the cabinet
+     * @param path     path to read the file contents from
+     * @throws IOException              if reading the file fails
+     * @throws IllegalArgumentException if the file limit is reached or the file
+     *                                  size exceeds {@link Short#MAX_VALUE}
+     */
+    public void addFile(String filename, Path path) throws IOException {
         addFile(filename, FileUtils.readFile(path));
     }
 
@@ -61,6 +73,11 @@ public class CabFile {
         CfHeader cfHeader = new CfHeader();
         cfHeader.setCFolders((short) 1); //Number of folders
         cfHeader.setCFiles((short) files.size()); //Number of files
+        if (cabinetSetId == null) {
+            cabinetSetId = (short) ThreadLocalRandom.current().nextInt(0x10000);
+        }
+        cfHeader.setSetID(cabinetSetId);
+        cfHeader.setiCabinet(cabinetIndex);
 
 
         CfFolder cfFolder = new CfFolder();
@@ -134,6 +151,8 @@ public class CabFile {
         LOG.info("Flipping buffer");
         cabinetBuffer.flip(); // Prepare to read from the buffer
 
+        cabinetIndex++;
+
         return cabinetBuffer;
     }
 
@@ -168,6 +187,14 @@ public class CabFile {
 
     public void setEnableChecksum(boolean enableChecksum) {
         this.enableChecksum = enableChecksum;
+    }
+
+    /**
+     * Starts a new cabinet set by resetting the set ID and cabinet index.
+     */
+    public void resetCabinetSet() {
+        this.cabinetSetId = null;
+        this.cabinetIndex = 0;
     }
 
     public static void main(String[] args) throws IOException {

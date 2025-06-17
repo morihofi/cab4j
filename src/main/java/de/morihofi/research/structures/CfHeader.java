@@ -15,6 +15,8 @@ public class CfHeader {
     private short cFolders = 0;
     private short cFiles = 0;
     private int coffFiles = 0;
+    private short setID = 0;
+    private short iCabinet = 0;
 
     public void setCbCabinet(int cbCabinet) {
         this.cbCabinet = cbCabinet;
@@ -48,6 +50,22 @@ public class CfHeader {
         return coffFiles;
     }
 
+    public short getSetID() {
+        return setID;
+    }
+
+    public void setSetID(short setID) {
+        this.setID = setID;
+    }
+
+    public short getiCabinet() {
+        return iCabinet;
+    }
+
+    public void setiCabinet(short iCabinet) {
+        this.iCabinet = iCabinet;
+    }
+
     public int getByteSize() {
         return SIGNATURE.length + 32;
     }
@@ -67,8 +85,8 @@ public class CfHeader {
         bb.putShort(cFolders);
         bb.putShort(cFiles);
         bb.putShort((short) 0); //Flags -> all zero
-        bb.putShort((short) 0x0622); //Set ID, should be random
-        bb.putShort((short) 0); //iCabinet is sequential number of this cabinet in a multicabinet set. (zero is first)
+        bb.putShort(setID); // Cabinet set ID
+        bb.putShort(iCabinet); //iCabinet is sequential number of this cabinet in a multicabinet set. (zero is first)
         // cbCFHeader, cbCFFolder, cbCFData, abReserve,
         // szCabinetPrev, szDiskPrev, szCabinetNext, szDiskNext
         // are ignored cause flags are 0
