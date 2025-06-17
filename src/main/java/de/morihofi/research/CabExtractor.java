@@ -17,10 +17,12 @@ public class CabExtractor {
     public static class ExtractedFile {
         public final ByteBuffer data;
         public final short attribs;
+        public final java.time.LocalDateTime lastModified;
 
-        ExtractedFile(ByteBuffer data, short attribs) {
+        ExtractedFile(ByteBuffer data, short attribs, java.time.LocalDateTime lm) {
             this.data = data;
             this.attribs = attribs;
+            this.lastModified = lm;
         }
     }
 
@@ -65,6 +67,7 @@ public class CabExtractor {
             int uoffFolderStart;
             short iFolder;
             short attribs;
+            java.time.LocalDateTime lastModified;
         }
 
         FileHeader[] files = new FileHeader[cFiles];
@@ -73,8 +76,10 @@ public class CabExtractor {
             fe.size = buffer.getInt();
             fe.uoffFolderStart = buffer.getInt();
             fe.iFolder = buffer.getShort();
-            buffer.getShort(); // date
-            buffer.getShort(); // time
+            short d = buffer.getShort(); // date
+            short t = buffer.getShort(); // time
+            fe.lastModified = java.time.LocalDateTime.of(
+                    CfFile.decodeDate(d), CfFile.decodeTime(t));
             fe.attribs = buffer.getShort();
             StringBuilder sb = new StringBuilder();
             byte b;
@@ -157,7 +162,7 @@ public class CabExtractor {
             ByteBuffer data = ByteBuffer.allocate(fe.size);
             data.put(slice);
             data.flip();
-            result.put(fe.name, new ExtractedFile(data, fe.attribs));
+            result.put(fe.name, new ExtractedFile(data, fe.attribs, fe.lastModified));
         }
 
         return result;
@@ -193,6 +198,7 @@ public class CabExtractor {
                         view.setHidden((a & CfFile.ATTRIB_HIDDEN) != 0);
                         view.setSystem((a & CfFile.ATTRIB_SYSTEM) != 0);
                         view.setArchive((a & CfFile.ATTRIB_ARCHIVE) != 0);
+                        Files.setLastModifiedTime(p, java.nio.file.attribute.FileTime.from(entry.getValue().lastModified.atZone(java.time.ZoneId.systemDefault()).toInstant()));
                     } catch (IOException | UnsupportedOperationException ignored) {
                     }
                 }

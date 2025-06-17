@@ -20,6 +20,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.attribute.DosFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.zip.Deflater;
@@ -31,11 +32,13 @@ public class CabFile {
         ByteBuffer data;
         short attribs;
         short folder;
+        java.time.LocalDateTime lastModified;
 
-        FileEntry(ByteBuffer data, short attribs, short folder) {
+        FileEntry(ByteBuffer data, short attribs, short folder, java.time.LocalDateTime ts) {
             this.data = data;
             this.attribs = attribs;
             this.folder = folder;
+            this.lastModified = ts;
         }
     }
 
@@ -66,14 +69,18 @@ public class CabFile {
 
 
     public void addFile(String filename, ByteBuffer bytes) {
-        addFile(filename, bytes, (short) 0, (short) 0);
+        addFile(filename, bytes, (short) 0, (short) 0, java.time.LocalDateTime.now());
     }
 
     public void addFile(String filename, ByteBuffer bytes, short attribs) {
-        addFile(filename, bytes, attribs, (short) 0);
+        addFile(filename, bytes, attribs, (short) 0, java.time.LocalDateTime.now());
     }
 
     public void addFile(String filename, ByteBuffer bytes, short attribs, short folder) {
+        addFile(filename, bytes, attribs, folder, java.time.LocalDateTime.now());
+    }
+
+    public void addFile(String filename, ByteBuffer bytes, short attribs, short folder, java.time.LocalDateTime timestamp) {
 
         // Check if we can add files
         if (files.size() >= MAX_FILES) {
@@ -87,11 +94,11 @@ public class CabFile {
                             + " bytes). Max allowed size is " + MAX_FILE_SIZE + " bytes");
         }
 
-        files.put(filename, new FileEntry(bytes, attribs, folder));
+        files.put(filename, new FileEntry(bytes, attribs, folder, timestamp));
     }
 
     public void addFile(String filename, byte[] bytes) {
-        addFile(filename, ByteBuffer.wrap(bytes), (short) 0, (short) 0);
+        addFile(filename, ByteBuffer.wrap(bytes), (short) 0, (short) 0, java.time.LocalDateTime.now());
     }
 
     /**
@@ -115,7 +122,9 @@ public class CabFile {
         } catch (UnsupportedOperationException ignored) {
             // DOS attributes not supported on this platform
         }
-        addFile(filename, data, attribs, (short) 0);
+        FileTime ft = Files.getLastModifiedTime(path);
+        java.time.LocalDateTime ts = java.time.LocalDateTime.ofInstant(ft.toInstant(), java.time.ZoneId.systemDefault());
+        addFile(filename, data, attribs, (short) 0, ts);
     }
 
     public ByteBuffer createCabinet() throws IOException {
@@ -148,8 +157,7 @@ public class CabFile {
             CfFile cfFile = new CfFile();
             cfFile.setCbFile(fileByte.remaining());
             cfFile.setiFolder(folder);
-            cfFile.setDate((short) 0);
-            cfFile.setTime((short) 0);
+            cfFile.setDateTime(fileEntry.lastModified);
             cfFile.setAttribs(fileEntry.attribs);
             cfFile.setSzName(fileName.getBytes(StandardCharsets.UTF_8));
 

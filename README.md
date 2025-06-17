@@ -31,3 +31,10 @@ cab.addFile("name.txt", buffer, CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN);
 
 Use `CabExtractor.extractWithAttributes` to retrieve these attributes or
 `extractToDirectory` to restore them on disk.
+
+## File timestamps
+
+`CabFile.addFile(Path)` also preserves the last modified time of the source
+file. When extracting with `extractWithAttributes` the returned
+`ExtractedFile` contains this timestamp and `extractToDirectory` restores it on
+disk. The time format follows the same semantics as the Java ZIP API.
