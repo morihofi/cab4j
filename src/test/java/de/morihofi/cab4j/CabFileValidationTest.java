@@ -1,5 +1,6 @@
 package de.morihofi.cab4j;
 
+import de.morihofi.cab4j.archive.CabArchive;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -11,26 +12,26 @@ public class CabFileValidationTest {
 
     @Test
     public void allowMaxFileCount() {
-        CabFile cabFile = new CabFile();
-        IntStream.range(0, CabFile.MAX_FILES).forEach(i ->
-                cabFile.addFile("f" + i, ByteBuffer.allocate(1)));
+        CabArchive archive = new CabArchive();
+        IntStream.range(0, CabArchive.MAX_FILES).forEach(i ->
+                archive.addFile("f" + i, ByteBuffer.allocate(1)));
 
         assertThrows(IllegalArgumentException.class,
-                () -> cabFile.addFile("overflow", ByteBuffer.allocate(1)));
+                () -> archive.addFile("overflow", ByteBuffer.allocate(1)));
     }
 
     @Test
     public void allowMaxFileSize() {
-        ByteBuffer maxBuf = ByteBuffer.allocate(CabFile.MAX_FILE_SIZE);
-        CabFile cabFile = new CabFile();
-        assertDoesNotThrow(() -> cabFile.addFile("max", maxBuf));
+        ByteBuffer maxBuf = ByteBuffer.allocate(CabArchive.MAX_FILE_SIZE);
+        CabArchive archive = new CabArchive();
+        assertDoesNotThrow(() -> archive.addFile("max", maxBuf));
     }
 
     @Test
     public void rejectTooLargeFile() {
-        ByteBuffer tooBig = ByteBuffer.allocate(CabFile.MAX_FILE_SIZE + 1);
-        CabFile cabFile = new CabFile();
+        ByteBuffer tooBig = ByteBuffer.allocate(CabArchive.MAX_FILE_SIZE + 1);
+        CabArchive archive2 = new CabArchive();
         assertThrows(IllegalArgumentException.class,
-                () -> cabFile.addFile("big", tooBig));
+                () -> archive2.addFile("big", tooBig));
     }
 }

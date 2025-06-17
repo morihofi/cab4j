@@ -1,5 +1,7 @@
 package de.morihofi.cab4j;
 
+import de.morihofi.cab4j.archive.CabArchive;
+import de.morihofi.cab4j.generator.CabGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -13,10 +15,11 @@ public class CabChecksumMismatchTest {
     public void extractionFailsOnChecksumMismatch() throws Exception {
         ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
 
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", hello);
+        CabArchive archive = new CabArchive();
+        archive.addFile("hello.c", hello);
+        CabGenerator generator = new CabGenerator(archive);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator.createCabinet();
         ByteBuffer corrupt = buf.duplicate();
         corrupt.order(ByteOrder.LITTLE_ENDIAN);
 

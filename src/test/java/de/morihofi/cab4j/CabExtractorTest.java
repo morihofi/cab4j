@@ -1,5 +1,7 @@
 package de.morihofi.cab4j;
 
+import de.morihofi.cab4j.archive.CabArchive;
+import de.morihofi.cab4j.generator.CabGenerator;
 import de.morihofi.cab4j.structures.CfFile;
 import de.morihofi.cab4j.structures.CfFolder;
 import org.junit.jupiter.api.Test;
@@ -18,11 +20,12 @@ public class CabExtractorTest {
         ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
         ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
 
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", hello);
-        cabFile.addFile("welcome.c", welcome);
+        CabArchive archive = new CabArchive();
+        archive.addFile("hello.c", hello);
+        archive.addFile("welcome.c", welcome);
+        CabGenerator generator = new CabGenerator(archive);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator.createCabinet();
 
         Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
 
@@ -45,12 +48,13 @@ public class CabExtractorTest {
         ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
         ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
 
-        CabFile cabFile = new CabFile();
-        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
-        cabFile.addFile("hello.c", hello);
-        cabFile.addFile("welcome.c", welcome);
+        CabArchive archive = new CabArchive();
+        archive.addFile("hello.c", hello);
+        archive.addFile("welcome.c", welcome);
+        CabGenerator generator = new CabGenerator(archive);
+        generator.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator.createCabinet();
 
         Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
 
@@ -70,10 +74,11 @@ public class CabExtractorTest {
 
     @Test
     public void addFileFromPath() throws Exception {
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", Paths.get("test/hello.c"));
+        CabArchive archive = new CabArchive();
+        archive.addFile("hello.c", Paths.get("test/hello.c"));
+        CabGenerator generator = new CabGenerator(archive);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator.createCabinet();
 
         Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
 
@@ -87,10 +92,11 @@ public class CabExtractorTest {
     @Test
     public void extractWithAttributes() throws Exception {
         ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", hello, (short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN));
+        CabArchive archive2 = new CabArchive();
+        archive2.addFile("hello.c", hello, (short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN));
+        CabGenerator generator2 = new CabGenerator(archive2);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator2.createCabinet();
 
         Map<String, CabExtractor.ExtractedFile> extracted = CabExtractor.extractWithAttributes(buf);
 
@@ -103,11 +109,12 @@ public class CabExtractorTest {
         ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
         ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
 
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", hello, (short) 0, (short) 0);
-        cabFile.addFile("welcome.c", welcome, (short) 0, (short) 1);
+        CabArchive archive3 = new CabArchive();
+        archive3.addFile("hello.c", hello, (short) 0, (short) 0);
+        archive3.addFile("welcome.c", welcome, (short) 0, (short) 1);
+        CabGenerator generator3 = new CabGenerator(archive3);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator3.createCabinet();
 
         Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
 

@@ -1,5 +1,7 @@
 package de.morihofi.cab4j;
 
+import de.morihofi.cab4j.archive.CabArchive;
+import de.morihofi.cab4j.generator.CabGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -27,9 +29,10 @@ public class CabDirectoryTest {
             Files.write(temp.resolve("hello.c"), TestData.HELLO_C);
             Files.write(sub.resolve("welcome.c"), TestData.WELCOME_C);
 
-            CabFile cab = new CabFile();
-            cab.addDirectory(temp);
-            List<ByteBuffer> cabs = cab.createCabinetSet(200); // force split
+            CabArchive archive = new CabArchive();
+            archive.addDirectory(temp);
+            CabGenerator generator = new CabGenerator(archive);
+            List<ByteBuffer> cabs = generator.createCabinetSet(200); // force split
 
             assertFalse(cabs.isEmpty());
 

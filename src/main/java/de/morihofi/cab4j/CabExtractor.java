@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.DosFileAttributeView;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.tukaani.xz.XZInputStream;
 
 public class CabExtractor {
 
@@ -51,6 +50,7 @@ public class CabExtractor {
         buffer.getShort(); // iCabinet
 
         // folders (only first is used)
+        // TODO: support multiple folders
         int[] folderCoffCabStart = new int[cFolders];
         short[] folderCCfData = new short[cFolders];
         short[] folderTypeCompress = new short[cFolders];

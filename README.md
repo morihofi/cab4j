@@ -12,10 +12,10 @@ It was created using the [official Microsoft CAB Documentation](docu/%5BMS-CAB%5
 
 ## File attributes
 
-`CabFile.addFile(Path)` automatically records DOS file attributes like read-only or hidden when available. You can also specify attributes manually using
+`CabArchive.addFile(Path)` automatically records DOS file attributes like read-only or hidden when available. You can also specify attributes manually using
 
 ```java
-cab.addFile("name.txt", buffer, CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN);
+archive.addFile("name.txt", buffer, CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN);
 ```
 
 Use `CabExtractor.extractWithAttributes` to retrieve these attributes or
@@ -23,19 +23,20 @@ Use `CabExtractor.extractWithAttributes` to retrieve these attributes or
 
 ## Directory packing
 
-You can add entire directory trees using `CabFile.addDirectory(Path)`. Relative
+You can add entire directory trees using `CabArchive.addDirectory(Path)`. Relative
 paths are preserved inside the cabinet. When building large archives you can
-split the output into multiple cabinets:
+split the output into multiple cabinets using `CabGenerator`:
 
 ```java
-CabFile cab = new CabFile();
-cab.addDirectory(Paths.get("assets"));
-List<ByteBuffer> cabs = cab.createCabinetSet(1_000_000); // split after 1 MB
+CabArchive archive = new CabArchive();
+archive.addDirectory(Paths.get("assets"));
+CabGenerator generator = new CabGenerator(archive);
+List<ByteBuffer> cabs = generator.createCabinetSet(1_000_000); // split after 1 MB
 ```
 
 ## File timestamps
 
-`CabFile.addFile(Path)` also preserves the last modified time of the source
+`CabArchive.addFile(Path)` also preserves the last modified time of the source
 file. When extracting with `extractWithAttributes` the returned
 `ExtractedFile` contains this timestamp and `extractToDirectory` restores it on
 disk. The time format follows the same semantics as the Java ZIP API.

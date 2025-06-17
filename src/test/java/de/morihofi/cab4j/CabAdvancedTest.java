@@ -1,5 +1,7 @@
 package de.morihofi.cab4j;
 
+import de.morihofi.cab4j.archive.CabArchive;
+import de.morihofi.cab4j.generator.CabGenerator;
 import de.morihofi.cab4j.structures.CfFile;
 import de.morihofi.cab4j.structures.CfFolder;
 import de.morihofi.cab4j.util.ChecksumHelper;
@@ -100,18 +102,20 @@ public class CabAdvancedTest {
         ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
         ByteBuffer welcome = ByteBuffer.wrap(TestData.WELCOME_C);
 
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", hello);
-        cabFile.addFile("welcome.c", welcome);
+        CabArchive archive = new CabArchive();
+        archive.addFile("hello.c", hello);
+        archive.addFile("welcome.c", welcome);
+        CabGenerator generator = new CabGenerator(archive);
 
-        return cabFile.createCabinet();
+        return generator.createCabinet();
     }
 
     private static ByteBuffer createAttribCab() throws Exception {
         ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", hello, (short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN));
-        return cabFile.createCabinet();
+        CabArchive archive = new CabArchive();
+        archive.addFile("hello.c", hello, (short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN));
+        CabGenerator generator = new CabGenerator(archive);
+        return generator.createCabinet();
     }
 
     @Test
@@ -126,11 +130,12 @@ public class CabAdvancedTest {
     @Test
     public void mszipCompression() throws Exception {
         ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
-        CabFile cabFile = new CabFile();
-        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
-        cabFile.addFile("hello.c", hello);
+        CabArchive archive2 = new CabArchive();
+        archive2.addFile("hello.c", hello);
+        CabGenerator generator2 = new CabGenerator(archive2);
+        generator2.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator2.createCabinet();
         ParsedCab pc = parse(buf);
         assertEquals(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP.getValue(), pc.folderTypeCompress[0]);
     }
@@ -140,11 +145,12 @@ public class CabAdvancedTest {
         ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
         ByteBuffer welcome = ByteBuffer.wrap(TestData.WELCOME_C);
 
-        CabFile cabFile = new CabFile();
-        cabFile.addFile("hello.c", hello, (short) 0, (short) 0);
-        cabFile.addFile("welcome.c", welcome, (short) 0, (short) 1);
+        CabArchive archive3 = new CabArchive();
+        archive3.addFile("hello.c", hello, (short) 0, (short) 0);
+        archive3.addFile("welcome.c", welcome, (short) 0, (short) 1);
+        CabGenerator generator3 = new CabGenerator(archive3);
 
-        ByteBuffer buf = cabFile.createCabinet();
+        ByteBuffer buf = generator3.createCabinet();
         ParsedCab pc = parse(buf);
         assertEquals(2, pc.cFolders);
     }

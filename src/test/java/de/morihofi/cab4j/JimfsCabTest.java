@@ -2,6 +2,8 @@ package de.morihofi.cab4j;
 
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
+import de.morihofi.cab4j.archive.CabArchive;
+import de.morihofi.cab4j.generator.CabGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -23,9 +25,10 @@ public class JimfsCabTest {
             Files.write(root.resolve("hello.c"), "hi".getBytes());
             Files.write(sub.resolve("welcome.c"), "welcome".getBytes());
 
-            CabFile cab = new CabFile();
-            cab.addDirectory(root);
-            ByteBuffer buf = cab.createCabinet();
+            CabArchive archive = new CabArchive();
+            archive.addDirectory(root);
+            CabGenerator generator = new CabGenerator(archive);
+            ByteBuffer buf = generator.createCabinet();
 
             Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
             assertArrayEquals("hi".getBytes(), TestData.toArray(extracted.get("hello.c")));
@@ -36,9 +39,10 @@ public class JimfsCabTest {
     @Test
     public void extractToJimfsDirectory() throws Exception {
         ByteBuffer hello = ByteBuffer.wrap("hello".getBytes());
-        CabFile cab = new CabFile();
-        cab.addFile("hello.txt", hello);
-        ByteBuffer cabBuffer = cab.createCabinet();
+        CabArchive archive2 = new CabArchive();
+        archive2.addFile("hello.txt", hello);
+        CabGenerator generator2 = new CabGenerator(archive2);
+        ByteBuffer cabBuffer = generator2.createCabinet();
 
         try (FileSystem fs = Jimfs.newFileSystem(Configuration.unix())) {
             Path out = fs.getPath("out");
@@ -57,9 +61,10 @@ public class JimfsCabTest {
             Files.createDirectory(root);
             Files.write(root.resolve("hello.txt"), "content".getBytes());
 
-            CabFile cab = new CabFile();
-            cab.addDirectory(root);
-            ByteBuffer buf = cab.createCabinet();
+            CabArchive archive3 = new CabArchive();
+            archive3.addDirectory(root);
+            CabGenerator generator3 = new CabGenerator(archive3);
+            ByteBuffer buf = generator3.createCabinet();
 
             Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
             assertArrayEquals("content".getBytes(), TestData.toArray(extracted.get("hello.txt")));
