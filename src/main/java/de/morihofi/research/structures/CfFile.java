@@ -4,6 +4,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 public class CfFile {
+    public static final short ATTRIB_READONLY = 0x01;
+    public static final short ATTRIB_HIDDEN = 0x02;
+    public static final short ATTRIB_SYSTEM = 0x04;
+    public static final short ATTRIB_ARCHIVE = 0x20;
     private int cbFile;
     private int uoffFolderStart = 0;
     private short iFolder = 0;

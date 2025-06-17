@@ -1,14 +1,29 @@
 package de.morihofi.research;
 
+import de.morihofi.research.structures.CfFile;
 import de.morihofi.research.util.ChecksumHelper;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.DosFileAttributeView;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class CabExtractor {
 
-    public static Map<String, ByteBuffer> extract(ByteBuffer cabBuffer) {
+    public static class ExtractedFile {
+        public final ByteBuffer data;
+        public final short attribs;
+
+        ExtractedFile(ByteBuffer data, short attribs) {
+            this.data = data;
+            this.attribs = attribs;
+        }
+    }
+
+    private static Map<String, ExtractedFile> extractInternal(ByteBuffer cabBuffer) {
         ByteBuffer buffer = cabBuffer.duplicate();
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
@@ -42,20 +57,21 @@ public class CabExtractor {
 
         buffer.position(coffFiles);
 
-        class FileEntry {
+        class FileHeader {
             String name;
             int size;
+            short attribs;
         }
 
-        FileEntry[] files = new FileEntry[cFiles];
+        FileHeader[] files = new FileHeader[cFiles];
         for (int i = 0; i < cFiles; i++) {
-            FileEntry fe = new FileEntry();
+            FileHeader fe = new FileHeader();
             fe.size = buffer.getInt();
             buffer.getInt(); // uoffFolderStart
             buffer.getShort(); // iFolder
             buffer.getShort(); // date
             buffer.getShort(); // time
-            buffer.getShort(); // attribs
+            fe.attribs = buffer.getShort();
             StringBuilder sb = new StringBuilder();
             byte b;
             while ((b = buffer.get()) != 0) {
@@ -75,14 +91,14 @@ public class CabExtractor {
             cbUncomp[i] = buffer.getShort();
         }
 
-        Map<String, ByteBuffer> result = new LinkedHashMap<>();
+        Map<String, ExtractedFile> result = new LinkedHashMap<>();
         if (cFolders > 0) {
             ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData[0]) + 4);
             checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
             checksumBuf.putShort(cbData[0]);
             checksumBuf.putShort(cbUncomp[0]);
 
-            for (FileEntry fe : files) {
+            for (FileHeader fe : files) {
                 ByteBuffer slice = buffer.slice();
                 slice.limit(fe.size);
                 ByteBuffer data = ByteBuffer.allocate(fe.size);
@@ -90,7 +106,7 @@ public class CabExtractor {
                 data.flip();
                 buffer.position(buffer.position() + fe.size);
                 checksumBuf.put(data.duplicate());
-                result.put(fe.name, data);
+                result.put(fe.name, new ExtractedFile(data, fe.attribs));
             }
 
             checksumBuf.flip();
@@ -101,5 +117,48 @@ public class CabExtractor {
         }
 
         return result;
+    }
+
+    public static Map<String, ByteBuffer> extract(ByteBuffer cabBuffer) {
+        Map<String, ExtractedFile> withAttribs = extractInternal(cabBuffer);
+        Map<String, ByteBuffer> res = new LinkedHashMap<>();
+        for (Map.Entry<String, ExtractedFile> e : withAttribs.entrySet()) {
+            res.put(e.getKey(), e.getValue().data);
+        }
+        return res;
+    }
+
+    public static Map<String, ExtractedFile> extractWithAttributes(ByteBuffer cabBuffer) {
+        return extractInternal(cabBuffer);
+    }
+
+    public static void extractToDirectory(ByteBuffer cabBuffer, Path outputDir, boolean restoreAttributes) throws IOException {
+        Map<String, ExtractedFile> files = extractInternal(cabBuffer);
+        for (Map.Entry<String, ExtractedFile> entry : files.entrySet()) {
+            Path p = outputDir.resolve(entry.getKey());
+            Files.createDirectories(p.getParent());
+            ByteBuffer data = entry.getValue().data.duplicate();
+            data.position(0);
+            Files.write(p, toArray(data));
+            if (restoreAttributes) {
+                DosFileAttributeView view = Files.getFileAttributeView(p, DosFileAttributeView.class);
+                if (view != null) {
+                    short a = entry.getValue().attribs;
+                    try {
+                        view.setReadOnly((a & CfFile.ATTRIB_READONLY) != 0);
+                        view.setHidden((a & CfFile.ATTRIB_HIDDEN) != 0);
+                        view.setSystem((a & CfFile.ATTRIB_SYSTEM) != 0);
+                        view.setArchive((a & CfFile.ATTRIB_ARCHIVE) != 0);
+                    } catch (IOException | UnsupportedOperationException ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    private static byte[] toArray(ByteBuffer buffer) {
+        byte[] arr = new byte[buffer.remaining()];
+        buffer.get(arr);
+        return arr;
     }
 }

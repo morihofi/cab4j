@@ -1,5 +1,6 @@
 package de.morihofi.research;
 
+import de.morihofi.research.structures.CfFile;
 import de.morihofi.research.structures.CfFolder;
 import de.morihofi.research.util.ChecksumHelper;
 import org.junit.jupiter.api.Test;
@@ -108,6 +109,13 @@ public class CabAdvancedTest {
         return cabFile.createCabinet();
     }
 
+    private static ByteBuffer createAttribCab() throws Exception {
+        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        CabFile cabFile = new CabFile();
+        cabFile.addFile("hello.c", hello, (short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN));
+        return cabFile.createCabinet();
+    }
+
     @Test
     public void compression() throws Exception {
         ByteBuffer buf = createSampleCab();
@@ -131,6 +139,13 @@ public class CabAdvancedTest {
         for (FileEntry fe : pc.files) {
             assertEquals(0, fe.attribs);
         }
+    }
+
+    @Test
+    public void customAttributePreservation() throws Exception {
+        ByteBuffer buf = createAttribCab();
+        ParsedCab pc = parse(buf);
+        assertEquals(CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN, pc.files[0].attribs);
     }
 
     @Test

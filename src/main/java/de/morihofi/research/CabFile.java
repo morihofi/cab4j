@@ -18,12 +18,24 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.Files;
+import java.nio.file.attribute.DosFileAttributes;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class CabFile {
 
-    private final Map<String, ByteBuffer> files = new LinkedHashMap<>();
+    private static class FileEntry {
+        ByteBuffer data;
+        short attribs;
+
+        FileEntry(ByteBuffer data, short attribs) {
+            this.data = data;
+            this.attribs = attribs;
+        }
+    }
+
+    private final Map<String, FileEntry> files = new LinkedHashMap<>();
     private boolean enableChecksum = true;
     private Short cabinetSetId = null;
     private short cabinetIndex = 0;
@@ -49,6 +61,10 @@ public class CabFile {
 
 
     public void addFile(String filename, ByteBuffer bytes) {
+        addFile(filename, bytes, (short) 0);
+    }
+
+    public void addFile(String filename, ByteBuffer bytes, short attribs) {
 
         // Check if we can add files
         if (files.size() >= MAX_FILES) {
@@ -62,11 +78,11 @@ public class CabFile {
                             + " bytes). Max allowed size is " + MAX_FILE_SIZE + " bytes");
         }
 
-        files.put(filename, bytes);
+        files.put(filename, new FileEntry(bytes, attribs));
     }
 
     public void addFile(String filename, byte[] bytes) {
-        addFile(filename, ByteBuffer.wrap(bytes));
+        addFile(filename, ByteBuffer.wrap(bytes), (short) 0);
     }
 
     /**
@@ -79,7 +95,18 @@ public class CabFile {
      *                                  size exceeds {@link Short#MAX_VALUE}
      */
     public void addFile(String filename, Path path) throws IOException {
-        addFile(filename, FileUtils.readFile(path));
+        ByteBuffer data = FileUtils.readFile(path);
+        short attribs = 0;
+        try {
+            DosFileAttributes dos = Files.readAttributes(path, DosFileAttributes.class);
+            if (dos.isReadOnly()) attribs |= CfFile.ATTRIB_READONLY;
+            if (dos.isHidden()) attribs |= CfFile.ATTRIB_HIDDEN;
+            if (dos.isSystem()) attribs |= CfFile.ATTRIB_SYSTEM;
+            if (dos.isArchive()) attribs |= CfFile.ATTRIB_ARCHIVE;
+        } catch (UnsupportedOperationException ignored) {
+            // DOS attributes not supported on this platform
+        }
+        addFile(filename, data, attribs);
     }
 
     public ByteBuffer createCabinet() throws IOException {
@@ -102,10 +129,11 @@ public class CabFile {
         List<CfFile> cfFileDefinitions = new ArrayList<>();
         int cfFileOffsets = 0;
         int cfFileSizeUncompressed = 0;
-        for (Map.Entry<String, ByteBuffer> entry : files.entrySet()) {
+        for (Map.Entry<String, FileEntry> entry : files.entrySet()) {
 
             String fileName = entry.getKey();
-            ByteBuffer fileByte = entry.getValue();
+            FileEntry fileEntry = entry.getValue();
+            ByteBuffer fileByte = fileEntry.data;
 
             LOG.info("Creating CFFile entry for file {} with file contents of {} byte", fileName, fileByte.remaining());
 
@@ -114,7 +142,7 @@ public class CabFile {
             cfFile.setiFolder((short) 0);
             cfFile.setDate((short) 0); //Date of this file, in the format ((year–1980) << 9)+(month << 5)+(day), where month={1..12} and day={1..31}. This "date" is typically considered the "last modified" date in local time, but the actual definition is application-defined
             cfFile.setTime((short) 0); //Time of this file, in the format (hour << 11)+(minute << 5)+(seconds/2), where hour={0..23}. This "time" is typically considered the "last modified" time in local time, but the actual definition is application-defined.
-            cfFile.setAttribs((short) 0); //Attributes of this file
+            cfFile.setAttribs(fileEntry.attribs); //Attributes of this file
             cfFile.setSzName(fileName.getBytes(StandardCharsets.UTF_8)); //Filename
 
             // The uoffFolderStart value represents the uncompressed offset of
@@ -153,7 +181,8 @@ public class CabFile {
         cabinetBuffer.put(cfData.build());
 
 
-        for (ByteBuffer fileByteBuffer : files.values()) {
+        for (FileEntry fe : files.values()) {
+            ByteBuffer fileByteBuffer = fe.data;
             LOG.info("Adding file, cab buffer position before: {}", cabinetBuffer.position());
             LOG.info("File size: {} bytes", fileByteBuffer.remaining());
 
@@ -178,8 +207,8 @@ public class CabFile {
         }
 
         int cbData = 0;
-        for (ByteBuffer bb : files.values()) {
-            cbData += bb.remaining();
+        for (FileEntry fe : files.values()) {
+            cbData += fe.data.remaining();
         }
 
         ByteBuffer checksumBuffer = ByteBuffer.allocate(cbData + 4);
@@ -187,8 +216,8 @@ public class CabFile {
         checksumBuffer.putShort((short) cbData); // cbData
         checksumBuffer.putShort((short) cbData); // cbUncomp
 
-        for (ByteBuffer bb : files.values()) {
-            ByteBuffer dup = bb.duplicate();
+        for (FileEntry fe : files.values()) {
+            ByteBuffer dup = fe.data.duplicate();
             dup.position(0);
             checksumBuffer.put(dup);
         }

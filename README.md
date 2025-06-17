@@ -19,3 +19,14 @@ This version is NOT production ready, 'cause it contains a few bugs and some mis
 - Verification of file limits
 - Attribute support
 - Folder support
+
+## File attributes
+
+`CabFile.addFile(Path)` automatically records DOS file attributes like read-only or hidden when available. You can also specify attributes manually using
+
+```java
+cab.addFile("name.txt", buffer, CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN);
+```
+
+Use `CabExtractor.extractWithAttributes` to retrieve these attributes or
+`extractToDirectory` to restore them on disk.

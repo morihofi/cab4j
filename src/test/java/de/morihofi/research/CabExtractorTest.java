@@ -1,5 +1,6 @@
 package de.morihofi.research;
 
+import de.morihofi.research.structures.CfFile;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -52,5 +53,19 @@ public class CabExtractorTest {
         extracted.get("hello.c").duplicate().get(extractedHello);
 
         assertArrayEquals(helloFile, extractedHello);
+    }
+
+    @Test
+    public void extractWithAttributes() throws Exception {
+        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        CabFile cabFile = new CabFile();
+        cabFile.addFile("hello.c", hello, (short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN));
+
+        ByteBuffer buf = cabFile.createCabinet();
+
+        Map<String, CabExtractor.ExtractedFile> extracted = CabExtractor.extractWithAttributes(buf);
+
+        assertTrue(extracted.containsKey("hello.c"));
+        assertEquals((short) (CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN), extracted.get("hello.c").attribs);
     }
 }
