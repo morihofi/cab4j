@@ -30,10 +30,12 @@ public class CabFile {
     private static class FileEntry {
         ByteBuffer data;
         short attribs;
+        short folder;
 
-        FileEntry(ByteBuffer data, short attribs) {
+        FileEntry(ByteBuffer data, short attribs, short folder) {
             this.data = data;
             this.attribs = attribs;
+            this.folder = folder;
         }
     }
 
@@ -64,10 +66,14 @@ public class CabFile {
 
 
     public void addFile(String filename, ByteBuffer bytes) {
-        addFile(filename, bytes, (short) 0);
+        addFile(filename, bytes, (short) 0, (short) 0);
     }
 
     public void addFile(String filename, ByteBuffer bytes, short attribs) {
+        addFile(filename, bytes, attribs, (short) 0);
+    }
+
+    public void addFile(String filename, ByteBuffer bytes, short attribs, short folder) {
 
         // Check if we can add files
         if (files.size() >= MAX_FILES) {
@@ -81,11 +87,11 @@ public class CabFile {
                             + " bytes). Max allowed size is " + MAX_FILE_SIZE + " bytes");
         }
 
-        files.put(filename, new FileEntry(bytes, attribs));
+        files.put(filename, new FileEntry(bytes, attribs, folder));
     }
 
     public void addFile(String filename, byte[] bytes) {
-        addFile(filename, ByteBuffer.wrap(bytes), (short) 0);
+        addFile(filename, ByteBuffer.wrap(bytes), (short) 0, (short) 0);
     }
 
     /**
@@ -109,7 +115,7 @@ public class CabFile {
         } catch (UnsupportedOperationException ignored) {
             // DOS attributes not supported on this platform
         }
-        addFile(filename, data, attribs);
+        addFile(filename, data, attribs, (short) 0);
     }
 
     public ByteBuffer createCabinet() throws IOException {
@@ -117,116 +123,138 @@ public class CabFile {
         LOG.info("Creating cabinet of {} files", files.size());
 
         CfHeader cfHeader = new CfHeader();
-        cfHeader.setCFolders((short) 1); //Number of folders
-        cfHeader.setCFiles((short) files.size()); //Number of files
+        cfHeader.setCFiles((short) files.size());
         if (cabinetSetId == null) {
             cabinetSetId = (short) ThreadLocalRandom.current().nextInt(0x10000);
         }
         cfHeader.setSetID(cabinetSetId);
         cfHeader.setiCabinet(cabinetIndex);
 
-
-        CfFolder cfFolder = new CfFolder();
-
-
         List<CfFile> cfFileDefinitions = new ArrayList<>();
         int cfFileOffsets = 0;
-        int cfFileSizeUncompressed = 0;
-        for (Map.Entry<String, FileEntry> entry : files.entrySet()) {
+        Map<Integer, Integer> folderOffsets = new HashMap<>();
+        Map<Integer, Integer> folderSizes = new HashMap<>();
+        Map<Integer, List<ByteBuffer>> folderData = new HashMap<>();
+        int maxFolder = 0;
 
+        for (Map.Entry<String, FileEntry> entry : files.entrySet()) {
             String fileName = entry.getKey();
             FileEntry fileEntry = entry.getValue();
             ByteBuffer fileByte = fileEntry.data;
+            short folder = fileEntry.folder;
 
             LOG.info("Creating CFFile entry for file {} with file contents of {} byte", fileName, fileByte.remaining());
 
             CfFile cfFile = new CfFile();
-            cfFile.setCbFile(fileByte.remaining()); //Specifies the uncompressed size of this file, in bytes
-            cfFile.setiFolder((short) 0);
-            cfFile.setDate((short) 0); //Date of this file, in the format ((year–1980) << 9)+(month << 5)+(day), where month={1..12} and day={1..31}. This "date" is typically considered the "last modified" date in local time, but the actual definition is application-defined
-            cfFile.setTime((short) 0); //Time of this file, in the format (hour << 11)+(minute << 5)+(seconds/2), where hour={0..23}. This "time" is typically considered the "last modified" time in local time, but the actual definition is application-defined.
-            cfFile.setAttribs(fileEntry.attribs); //Attributes of this file
-            cfFile.setSzName(fileName.getBytes(StandardCharsets.UTF_8)); //Filename
+            cfFile.setCbFile(fileByte.remaining());
+            cfFile.setiFolder(folder);
+            cfFile.setDate((short) 0);
+            cfFile.setTime((short) 0);
+            cfFile.setAttribs(fileEntry.attribs);
+            cfFile.setSzName(fileName.getBytes(StandardCharsets.UTF_8));
 
-            // The uoffFolderStart value represents the uncompressed offset of
-            // the file's data inside the folder
-            cfFile.setUoffFolderStart(cfFileSizeUncompressed);
-
-            cfFileOffsets += cfFile.getByteSize();
-            cfFileSizeUncompressed += cfFile.getCbFile();
+            int off = folderOffsets.getOrDefault((int) folder, 0);
+            cfFile.setUoffFolderStart(off);
+            folderOffsets.put((int) folder, off + fileByte.remaining());
 
             cfFileDefinitions.add(cfFile);
+            cfFileOffsets += cfFile.getByteSize();
+
+            folderSizes.put((int) folder, folderSizes.getOrDefault((int) folder, 0) + fileByte.remaining());
+            folderData.computeIfAbsent((int) folder, k -> new ArrayList<>()).add(fileByte.duplicate());
+            if (folder > maxFolder) maxFolder = folder;
         }
 
-        CfData cfData = new CfData();
-        cfData.setCbUncomp((short) cfFileSizeUncompressed); //Uncompressed size
+        int folderCount = maxFolder + 1;
+        cfHeader.setCFolders((short) folderCount);
 
-        ByteBuffer folderData = ByteBuffer.allocate(cfFileSizeUncompressed);
-        for (FileEntry fe : files.values()) {
-            ByteBuffer dup = fe.data.duplicate();
-            dup.position(0);
-            folderData.put(dup);
-        }
-        folderData.flip();
+        List<CfFolder> folderDefs = new ArrayList<>();
+        List<CfData> dataDefs = new ArrayList<>();
+        List<ByteBuffer> dataBlocks = new ArrayList<>();
 
-        ByteBuffer dataBlock;
-        if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP) {
-            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-            bos.write('C');
-            bos.write('K');
-            Deflater def = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
-            try (DeflaterOutputStream dos = new DeflaterOutputStream(bos, def)) {
-                byte[] arr = new byte[folderData.remaining()];
-                folderData.duplicate().get(arr);
-                dos.write(arr);
+        for (int i = 0; i < folderCount; i++) {
+            int uncompSize = folderSizes.getOrDefault(i, 0);
+            ByteBuffer folderBuf = ByteBuffer.allocate(uncompSize);
+            List<ByteBuffer> pieces = folderData.get(i);
+            if (pieces != null) {
+                for (ByteBuffer bb : pieces) {
+                    ByteBuffer dup = bb.duplicate();
+                    dup.position(0);
+                    folderBuf.put(dup);
+                }
             }
-            byte[] comp = bos.toByteArray();
-            dataBlock = ByteBuffer.wrap(comp);
-        } else {
-            dataBlock = folderData.duplicate();
+            folderBuf.flip();
+
+            ByteBuffer dataBlock;
+            if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP) {
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                bos.write('C');
+                bos.write('K');
+                Deflater def = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+                try (DeflaterOutputStream dos = new DeflaterOutputStream(bos, def)) {
+                    byte[] arr = new byte[folderBuf.remaining()];
+                    folderBuf.duplicate().get(arr);
+                    dos.write(arr);
+                }
+                byte[] comp = bos.toByteArray();
+                dataBlock = ByteBuffer.wrap(comp);
+            } else {
+                dataBlock = folderBuf.duplicate();
+            }
+
+            CfData cfData = new CfData();
+            cfData.setCbUncomp((short) folderBuf.remaining());
+            cfData.setCbData((short) dataBlock.remaining());
+
+            if (enableChecksum) {
+                ByteBuffer checksumBuffer = ByteBuffer.allocate(Short.toUnsignedInt(cfData.getCbData()) + 4);
+                checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
+                checksumBuffer.putShort(cfData.getCbData());
+                checksumBuffer.putShort(cfData.getCbUncomp());
+                checksumBuffer.put(dataBlock.duplicate());
+                checksumBuffer.flip();
+                cfData.setCsum(ChecksumHelper.cabChecksum(checksumBuffer));
+            } else {
+                cfData.setCsum(0);
+            }
+
+            CfFolder cfFolder = new CfFolder();
+            cfFolder.setTypeCompress(compressionType);
+            cfFolder.setcCfData((short) 1);
+
+            folderDefs.add(cfFolder);
+            dataDefs.add(cfData);
+            dataBlocks.add(dataBlock);
         }
 
-        cfData.setCbData((short) dataBlock.remaining());
-        cfFolder.setTypeCompress(compressionType);
-        cfFolder.setcCfData((short) 1); //Specifies the number of CFDATA structures for this folder that are actually in this cabinet
+        int coffFiles = cfHeader.getByteSize() + folderDefs.size() * folderDefs.get(0).getByteSize();
+        cfHeader.setCoffFiles(coffFiles);
 
-        if (enableChecksum) {
-            ByteBuffer checksumBuffer = ByteBuffer.allocate(Short.toUnsignedInt(cfData.getCbData()) + 4);
-            checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
-            checksumBuffer.putShort(cfData.getCbData());
-            checksumBuffer.putShort(cfData.getCbUncomp());
-            checksumBuffer.put(dataBlock.duplicate());
-            checksumBuffer.flip();
-            cfData.setCsum(ChecksumHelper.cabChecksum(checksumBuffer));
-        } else {
-            cfData.setCsum(0);
+        int offset = coffFiles + cfFileOffsets;
+        for (int i = 0; i < folderCount; i++) {
+            CfFolder f = folderDefs.get(i);
+            f.setCoffCabStart(offset);
+            offset += dataDefs.get(i).getByteSize() + dataBlocks.get(i).remaining();
         }
+        cfHeader.setCbCabinet(offset);
 
-        // Adjust header
-        cfHeader.setCoffFiles(cfHeader.getByteSize() + cfFolder.getByteSize()); //Specifies the absolute file offset, in bytes, of the first CFFILE field entry (Size of the Header and Folder definitions)
-        cfHeader.setCbCabinet(cfHeader.getCoffFiles() + cfFileOffsets + cfData.getByteSize() + dataBlock.remaining()); //Total file size incl. headers
-
-        // Header was changed, so adjust folder
-        cfFolder.setCoffCabStart(cfHeader.getByteSize() + cfFolder.getByteSize() + cfFileOffsets); // Specifies the absolute file offset of the first CFDATA field block for the folder.
-
-        // Glue everything together
         ByteBuffer cabinetBuffer = ByteBuffer.allocate(cfHeader.getCbCabinet());
         cabinetBuffer.order(ByteOrder.LITTLE_ENDIAN);
         cabinetBuffer.put(cfHeader.build());
-        cabinetBuffer.put(cfFolder.build());
+        for (CfFolder f : folderDefs) {
+            cabinetBuffer.put(f.build());
+        }
         for (CfFile cfFile : cfFileDefinitions) {
             cabinetBuffer.put(cfFile.build());
         }
-        cabinetBuffer.put(cfData.build());
+        for (int i = 0; i < folderCount; i++) {
+            cabinetBuffer.put(dataDefs.get(i).build());
+            LOG.info("Adding {} bytes of {} data", dataBlocks.get(i).remaining(), compressionType);
+            cabinetBuffer.put(dataBlocks.get(i).duplicate());
+        }
 
-        LOG.info("Adding {} bytes of {} data", dataBlock.remaining(), compressionType);
-        cabinetBuffer.put(dataBlock.duplicate());
-
-        LOG.info("Flipping buffer");
-        cabinetBuffer.flip(); // Prepare to read from the buffer
-
+        cabinetBuffer.flip();
         cabinetIndex++;
-
         return cabinetBuffer;
     }
 

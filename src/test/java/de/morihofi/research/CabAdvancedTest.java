@@ -139,9 +139,16 @@ public class CabAdvancedTest {
 
     @Test
     public void multiFolderCabinet() throws Exception {
-        ByteBuffer buf = createSampleCab();
+        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
+
+        CabFile cabFile = new CabFile();
+        cabFile.addFile("hello.c", hello, (short) 0, (short) 0);
+        cabFile.addFile("welcome.c", welcome, (short) 0, (short) 1);
+
+        ByteBuffer buf = cabFile.createCabinet();
         ParsedCab pc = parse(buf);
-        assertEquals(1, pc.cFolders); // library currently supports only one folder
+        assertEquals(2, pc.cFolders);
     }
 
     @Test

@@ -62,6 +62,8 @@ public class CabExtractor {
         class FileHeader {
             String name;
             int size;
+            int uoffFolderStart;
+            short iFolder;
             short attribs;
         }
 
@@ -69,8 +71,8 @@ public class CabExtractor {
         for (int i = 0; i < cFiles; i++) {
             FileHeader fe = new FileHeader();
             fe.size = buffer.getInt();
-            buffer.getInt(); // uoffFolderStart
-            buffer.getShort(); // iFolder
+            fe.uoffFolderStart = buffer.getInt();
+            fe.iFolder = buffer.getShort();
             buffer.getShort(); // date
             buffer.getShort(); // time
             fe.attribs = buffer.getShort();
@@ -83,37 +85,32 @@ public class CabExtractor {
             files[i] = fe;
         }
 
-        // Read CFDATA blocks (assume 1 per folder)
-        int[] csum = new int[cFolders];
-        short[] cbData = new short[cFolders];
-        short[] cbUncomp = new short[cFolders];
+        Map<Integer, ByteBuffer> folders = new LinkedHashMap<>();
         for (int i = 0; i < cFolders; i++) {
-            csum[i] = buffer.getInt();
-            cbData[i] = buffer.getShort();
-            cbUncomp[i] = buffer.getShort();
-        }
+            buffer.position(folderCoffCabStart[i]);
+            int csum = buffer.getInt();
+            short cbData = buffer.getShort();
+            short cbUncomp = buffer.getShort();
 
-        Map<String, ExtractedFile> result = new LinkedHashMap<>();
-        if (cFolders > 0) {
             ByteBuffer dataSlice = buffer.slice();
-            dataSlice.limit(Short.toUnsignedInt(cbData[0]));
+            dataSlice.limit(Short.toUnsignedInt(cbData));
 
-            ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData[0]) + 4);
+            ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData) + 4);
             checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
-            checksumBuf.putShort(cbData[0]);
-            checksumBuf.putShort(cbUncomp[0]);
+            checksumBuf.putShort(cbData);
+            checksumBuf.putShort(cbUncomp);
             checksumBuf.put(dataSlice.duplicate());
             checksumBuf.flip();
             int calculated = ChecksumHelper.cabChecksum(checksumBuf);
-            if (calculated != csum[0]) {
+            if (calculated != csum) {
                 throw new IllegalStateException("CFDATA checksum mismatch");
             }
 
-            CfFolder.COMPRESS_TYPE comp = CfFolder.COMPRESS_TYPE.fromValue(Short.toUnsignedInt(folderTypeCompress[0]));
+            CfFolder.COMPRESS_TYPE comp = CfFolder.COMPRESS_TYPE.fromValue(Short.toUnsignedInt(folderTypeCompress[i]));
             ByteBuffer uncompressed;
             switch (comp) {
                 case TCOMP_TYPE_NONE:
-                    uncompressed = ByteBuffer.allocate(Short.toUnsignedInt(cbUncomp[0]));
+                    uncompressed = ByteBuffer.allocate(Short.toUnsignedInt(cbUncomp));
                     uncompressed.put(dataSlice.duplicate());
                     uncompressed.flip();
                     break;
@@ -125,7 +122,7 @@ public class CabExtractor {
                     dataSlice.get(compBytes);
                     java.util.zip.Inflater inflater = new java.util.zip.Inflater(true);
                     inflater.setInput(compBytes);
-                    byte[] out = new byte[Short.toUnsignedInt(cbUncomp[0])];
+                    byte[] out = new byte[Short.toUnsignedInt(cbUncomp)];
                     try {
                         int written = inflater.inflate(out);
                         if (written < out.length) {
@@ -144,17 +141,23 @@ public class CabExtractor {
                     throw new UnsupportedOperationException("Unsupported compression type: " + comp);
             }
 
-            buffer.position(buffer.position() + Short.toUnsignedInt(cbData[0]));
-            ByteBuffer tmp = uncompressed.duplicate();
-            for (FileHeader fe : files) {
-                ByteBuffer slice = tmp.slice();
-                slice.limit(fe.size);
-                ByteBuffer data = ByteBuffer.allocate(fe.size);
-                data.put(slice);
-                data.flip();
-                tmp.position(tmp.position() + fe.size);
-                result.put(fe.name, new ExtractedFile(data, fe.attribs));
+            folders.put(i, uncompressed);
+        }
+
+        Map<String, ExtractedFile> result = new LinkedHashMap<>();
+        for (FileHeader fe : files) {
+            ByteBuffer folder = folders.get((int) fe.iFolder);
+            if (folder == null) {
+                throw new IllegalStateException("Missing folder data for iFolder " + fe.iFolder);
             }
+            ByteBuffer dup = folder.duplicate();
+            dup.position(fe.uoffFolderStart);
+            ByteBuffer slice = dup.slice();
+            slice.limit(fe.size);
+            ByteBuffer data = ByteBuffer.allocate(fe.size);
+            data.put(slice);
+            data.flip();
+            result.put(fe.name, new ExtractedFile(data, fe.attribs));
         }
 
         return result;
