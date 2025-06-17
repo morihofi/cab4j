@@ -1,5 +1,6 @@
 package de.morihofi.research;
 
+import de.morihofi.research.util.ChecksumHelper;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedHashMap;
@@ -65,21 +66,38 @@ public class CabExtractor {
         }
 
         // Read CFDATA blocks (assume 1 per folder)
+        int[] csum = new int[cFolders];
+        short[] cbData = new short[cFolders];
+        short[] cbUncomp = new short[cFolders];
         for (int i = 0; i < cFolders; i++) {
-            buffer.getInt(); // csum
-            buffer.getShort(); // cbData
-            buffer.getShort(); // cbUncomp
+            csum[i] = buffer.getInt();
+            cbData[i] = buffer.getShort();
+            cbUncomp[i] = buffer.getShort();
         }
 
         Map<String, ByteBuffer> result = new LinkedHashMap<>();
-        for (FileEntry fe : files) {
-            ByteBuffer slice = buffer.slice();
-            slice.limit(fe.size);
-            ByteBuffer data = ByteBuffer.allocate(fe.size);
-            data.put(slice);
-            data.flip();
-            buffer.position(buffer.position() + fe.size);
-            result.put(fe.name, data);
+        if (cFolders > 0) {
+            ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData[0]) + 4);
+            checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
+            checksumBuf.putShort(cbData[0]);
+            checksumBuf.putShort(cbUncomp[0]);
+
+            for (FileEntry fe : files) {
+                ByteBuffer slice = buffer.slice();
+                slice.limit(fe.size);
+                ByteBuffer data = ByteBuffer.allocate(fe.size);
+                data.put(slice);
+                data.flip();
+                buffer.position(buffer.position() + fe.size);
+                checksumBuf.put(data.duplicate());
+                result.put(fe.name, data);
+            }
+
+            checksumBuf.flip();
+            int calculated = ChecksumHelper.cabChecksum(checksumBuf);
+            if (calculated != csum[0]) {
+                throw new IllegalStateException("CFDATA checksum mismatch");
+            }
         }
 
         return result;
