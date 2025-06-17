@@ -126,6 +126,18 @@ public class CabAdvancedTest {
     }
 
     @Test
+    public void mszipCompression() throws Exception {
+        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        CabFile cabFile = new CabFile();
+        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
+        cabFile.addFile("hello.c", hello);
+
+        ByteBuffer buf = cabFile.createCabinet();
+        ParsedCab pc = parse(buf);
+        assertEquals(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP.getValue(), pc.folderTypeCompress[0]);
+    }
+
+    @Test
     public void multiFolderCabinet() throws Exception {
         ByteBuffer buf = createSampleCab();
         ParsedCab pc = parse(buf);

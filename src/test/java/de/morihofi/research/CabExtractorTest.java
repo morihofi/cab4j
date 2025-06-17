@@ -1,6 +1,7 @@
 package de.morihofi.research;
 
 import de.morihofi.research.structures.CfFile;
+import de.morihofi.research.structures.CfFolder;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -18,6 +19,34 @@ public class CabExtractorTest {
         ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
 
         CabFile cabFile = new CabFile();
+        cabFile.addFile("hello.c", hello);
+        cabFile.addFile("welcome.c", welcome);
+
+        ByteBuffer buf = cabFile.createCabinet();
+
+        Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
+
+        byte[] helloArr = new byte[hello.remaining()];
+        hello.duplicate().get(helloArr);
+        byte[] welcomeArr = new byte[welcome.remaining()];
+        welcome.duplicate().get(welcomeArr);
+
+        byte[] extractedHello = new byte[extracted.get("hello.c").remaining()];
+        extracted.get("hello.c").duplicate().get(extractedHello);
+        byte[] extractedWelcome = new byte[extracted.get("welcome.c").remaining()];
+        extracted.get("welcome.c").duplicate().get(extractedWelcome);
+
+        assertArrayEquals(helloArr, extractedHello);
+        assertArrayEquals(welcomeArr, extractedWelcome);
+    }
+
+    @Test
+    public void packAndExtractCompressed() throws Exception {
+        ByteBuffer hello = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/hello.c")));
+        ByteBuffer welcome = ByteBuffer.wrap(Files.readAllBytes(Paths.get("test/welcome.c")));
+
+        CabFile cabFile = new CabFile();
+        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
         cabFile.addFile("hello.c", hello);
         cabFile.addFile("welcome.c", welcome);
 

@@ -26,6 +26,15 @@ public class CfFolder {
         public int getValue() {
             return value;
         }
+
+        public static COMPRESS_TYPE fromValue(int value) {
+            for (COMPRESS_TYPE t : values()) {
+                if (t.value == value) {
+                    return t;
+                }
+            }
+            throw new IllegalArgumentException("Unknown compression type: " + value);
+        }
     }
 
     public int getCoffCabStart() {
@@ -46,6 +55,10 @@ public class CfFolder {
 
     public short getTypeCompress() {
         return typeCompress;
+    }
+
+    public COMPRESS_TYPE getTypeCompressEnum() {
+        return COMPRESS_TYPE.fromValue(Short.toUnsignedInt(typeCompress));
     }
 
     public void setTypeCompress(short typeCompress) {

@@ -1,6 +1,7 @@
 package de.morihofi.research;
 
 import de.morihofi.research.structures.CfFile;
+import de.morihofi.research.structures.CfFolder;
 import de.morihofi.research.util.ChecksumHelper;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -49,10 +50,11 @@ public class CabExtractor {
         // folders (only first is used)
         int[] folderCoffCabStart = new int[cFolders];
         short[] folderCCfData = new short[cFolders];
+        short[] folderTypeCompress = new short[cFolders];
         for (int i = 0; i < cFolders; i++) {
             folderCoffCabStart[i] = buffer.getInt();
             folderCCfData[i] = buffer.getShort();
-            buffer.getShort(); // typeCompress
+            folderTypeCompress[i] = buffer.getShort();
         }
 
         buffer.position(coffFiles);
@@ -93,26 +95,65 @@ public class CabExtractor {
 
         Map<String, ExtractedFile> result = new LinkedHashMap<>();
         if (cFolders > 0) {
+            ByteBuffer dataSlice = buffer.slice();
+            dataSlice.limit(Short.toUnsignedInt(cbData[0]));
+
             ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData[0]) + 4);
             checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
             checksumBuf.putShort(cbData[0]);
             checksumBuf.putShort(cbUncomp[0]);
-
-            for (FileHeader fe : files) {
-                ByteBuffer slice = buffer.slice();
-                slice.limit(fe.size);
-                ByteBuffer data = ByteBuffer.allocate(fe.size);
-                data.put(slice);
-                data.flip();
-                buffer.position(buffer.position() + fe.size);
-                checksumBuf.put(data.duplicate());
-                result.put(fe.name, new ExtractedFile(data, fe.attribs));
-            }
-
+            checksumBuf.put(dataSlice.duplicate());
             checksumBuf.flip();
             int calculated = ChecksumHelper.cabChecksum(checksumBuf);
             if (calculated != csum[0]) {
                 throw new IllegalStateException("CFDATA checksum mismatch");
+            }
+
+            CfFolder.COMPRESS_TYPE comp = CfFolder.COMPRESS_TYPE.fromValue(Short.toUnsignedInt(folderTypeCompress[0]));
+            ByteBuffer uncompressed;
+            switch (comp) {
+                case TCOMP_TYPE_NONE:
+                    uncompressed = ByteBuffer.allocate(Short.toUnsignedInt(cbUncomp[0]));
+                    uncompressed.put(dataSlice.duplicate());
+                    uncompressed.flip();
+                    break;
+                case TCOMP_TYPE_MSZIP:
+                    if (dataSlice.remaining() < 2 || dataSlice.get() != 'C' || dataSlice.get() != 'K') {
+                        throw new IllegalStateException("Invalid MSZIP signature");
+                    }
+                    byte[] compBytes = new byte[dataSlice.remaining()];
+                    dataSlice.get(compBytes);
+                    java.util.zip.Inflater inflater = new java.util.zip.Inflater(true);
+                    inflater.setInput(compBytes);
+                    byte[] out = new byte[Short.toUnsignedInt(cbUncomp[0])];
+                    try {
+                        int written = inflater.inflate(out);
+                        if (written < out.length) {
+                            byte[] tmp = new byte[out.length];
+                            System.arraycopy(out, 0, tmp, 0, written);
+                            out = java.util.Arrays.copyOf(tmp, written);
+                        }
+                    } catch (java.util.zip.DataFormatException e) {
+                        throw new IllegalStateException("MSZIP decompression failed", e);
+                    } finally {
+                        inflater.end();
+                    }
+                    uncompressed = ByteBuffer.wrap(out);
+                    break;
+                default:
+                    throw new UnsupportedOperationException("Unsupported compression type: " + comp);
+            }
+
+            buffer.position(buffer.position() + Short.toUnsignedInt(cbData[0]));
+            ByteBuffer tmp = uncompressed.duplicate();
+            for (FileHeader fe : files) {
+                ByteBuffer slice = tmp.slice();
+                slice.limit(fe.size);
+                ByteBuffer data = ByteBuffer.allocate(fe.size);
+                data.put(slice);
+                data.flip();
+                tmp.position(tmp.position() + fe.size);
+                result.put(fe.name, new ExtractedFile(data, fe.attribs));
             }
         }
 

@@ -22,6 +22,8 @@ import java.nio.file.Files;
 import java.nio.file.attribute.DosFileAttributes;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
 
 public class CabFile {
 
@@ -39,6 +41,7 @@ public class CabFile {
     private boolean enableChecksum = true;
     private Short cabinetSetId = null;
     private short cabinetIndex = 0;
+    private CfFolder.COMPRESS_TYPE compressionType = CfFolder.COMPRESS_TYPE.TCOMP_TYPE_NONE;
 
     /**
      * Maximum amount of files allowed in a single cabinet file as specified in
@@ -157,15 +160,51 @@ public class CabFile {
 
         CfData cfData = new CfData();
         cfData.setCbUncomp((short) cfFileSizeUncompressed); //Uncompressed size
-        cfData.setCbData((short) cfFileSizeUncompressed); //Compressed size
-        cfData.setCsum(calculateCsum()); //Checksum
 
-        cfFolder.setTypeCompress(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_NONE);
+        ByteBuffer folderData = ByteBuffer.allocate(cfFileSizeUncompressed);
+        for (FileEntry fe : files.values()) {
+            ByteBuffer dup = fe.data.duplicate();
+            dup.position(0);
+            folderData.put(dup);
+        }
+        folderData.flip();
+
+        ByteBuffer dataBlock;
+        if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP) {
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            bos.write('C');
+            bos.write('K');
+            Deflater def = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+            try (DeflaterOutputStream dos = new DeflaterOutputStream(bos, def)) {
+                byte[] arr = new byte[folderData.remaining()];
+                folderData.duplicate().get(arr);
+                dos.write(arr);
+            }
+            byte[] comp = bos.toByteArray();
+            dataBlock = ByteBuffer.wrap(comp);
+        } else {
+            dataBlock = folderData.duplicate();
+        }
+
+        cfData.setCbData((short) dataBlock.remaining());
+        cfFolder.setTypeCompress(compressionType);
         cfFolder.setcCfData((short) 1); //Specifies the number of CFDATA structures for this folder that are actually in this cabinet
+
+        if (enableChecksum) {
+            ByteBuffer checksumBuffer = ByteBuffer.allocate(Short.toUnsignedInt(cfData.getCbData()) + 4);
+            checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
+            checksumBuffer.putShort(cfData.getCbData());
+            checksumBuffer.putShort(cfData.getCbUncomp());
+            checksumBuffer.put(dataBlock.duplicate());
+            checksumBuffer.flip();
+            cfData.setCsum(ChecksumHelper.cabChecksum(checksumBuffer));
+        } else {
+            cfData.setCsum(0);
+        }
 
         // Adjust header
         cfHeader.setCoffFiles(cfHeader.getByteSize() + cfFolder.getByteSize()); //Specifies the absolute file offset, in bytes, of the first CFFILE field entry (Size of the Header and Folder definitions)
-        cfHeader.setCbCabinet(cfHeader.getCoffFiles() + cfFileOffsets + cfData.getCbData() + cfData.getByteSize()); //Total file size incl. headers
+        cfHeader.setCbCabinet(cfHeader.getCoffFiles() + cfFileOffsets + cfData.getByteSize() + dataBlock.remaining()); //Total file size incl. headers
 
         // Header was changed, so adjust folder
         cfFolder.setCoffCabStart(cfHeader.getByteSize() + cfFolder.getByteSize() + cfFileOffsets); // Specifies the absolute file offset of the first CFDATA field block for the folder.
@@ -180,18 +219,8 @@ public class CabFile {
         }
         cabinetBuffer.put(cfData.build());
 
-
-        for (FileEntry fe : files.values()) {
-            ByteBuffer fileByteBuffer = fe.data;
-            LOG.info("Adding file, cab buffer position before: {}", cabinetBuffer.position());
-            LOG.info("File size: {} bytes", fileByteBuffer.remaining());
-
-            ByteBuffer dup = fileByteBuffer.duplicate();
-            dup.position(0);
-            cabinetBuffer.put(dup);
-
-            LOG.info("Cab-Buffer position after: {}", cabinetBuffer.position());
-        }
+        LOG.info("Adding {} bytes of {} data", dataBlock.remaining(), compressionType);
+        cabinetBuffer.put(dataBlock.duplicate());
 
         LOG.info("Flipping buffer");
         cabinetBuffer.flip(); // Prepare to read from the buffer
@@ -201,30 +230,6 @@ public class CabFile {
         return cabinetBuffer;
     }
 
-    private int calculateCsum() {
-        if (!enableChecksum) {
-            return 0;
-        }
-
-        int cbData = 0;
-        for (FileEntry fe : files.values()) {
-            cbData += fe.data.remaining();
-        }
-
-        ByteBuffer checksumBuffer = ByteBuffer.allocate(cbData + 4);
-        checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
-        checksumBuffer.putShort((short) cbData); // cbData
-        checksumBuffer.putShort((short) cbData); // cbUncomp
-
-        for (FileEntry fe : files.values()) {
-            ByteBuffer dup = fe.data.duplicate();
-            dup.position(0);
-            checksumBuffer.put(dup);
-        }
-
-        checksumBuffer.flip();
-        return ChecksumHelper.cabChecksum(checksumBuffer);
-    }
 
     public boolean isEnableChecksum() {
         return enableChecksum;
@@ -232,6 +237,14 @@ public class CabFile {
 
     public void setEnableChecksum(boolean enableChecksum) {
         this.enableChecksum = enableChecksum;
+    }
+
+    public CfFolder.COMPRESS_TYPE getCompressionType() {
+        return compressionType;
+    }
+
+    public void setCompressionType(CfFolder.COMPRESS_TYPE compressionType) {
+        this.compressionType = compressionType;
     }
 
     /**
@@ -248,6 +261,7 @@ public class CabFile {
         CabFile cabFile = new CabFile();
         cabFile.setEnableChecksum(true);
 
+        cabFile.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP);
         cabFile.addFile("hello.c", Paths.get("test/hello.c"));
         cabFile.addFile("welcome.c", Paths.get("test/welcome.c"));
         // cabFile.addFile("MS-CAB.pdf", Paths.get("docu/[MS-CAB].pdf"));
