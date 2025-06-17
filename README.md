@@ -8,6 +8,8 @@ It was created using the [official Microsoft CAB Documentation](docu/%5BMS-CAB%5
 - This implementation makes use of only Java ByteBuffers
 - Currently, there is no compression support. Just archiving the files as they're on disk
 - Uncompressed and MSZIP compression support
+- Recursive directory packing with subfolder support
+- Splitting archives into multiple cabinets
 
 # Disclaimer
 This version is NOT production ready, 'cause it contains a few bugs and some miscalculated offsets
@@ -31,6 +33,18 @@ cab.addFile("name.txt", buffer, CfFile.ATTRIB_READONLY | CfFile.ATTRIB_HIDDEN);
 
 Use `CabExtractor.extractWithAttributes` to retrieve these attributes or
 `extractToDirectory` to restore them on disk.
+
+## Directory packing
+
+You can add entire directory trees using `CabFile.addDirectory(Path)`. Relative
+paths are preserved inside the cabinet. When building large archives you can
+split the output into multiple cabinets:
+
+```java
+CabFile cab = new CabFile();
+cab.addDirectory(Paths.get("assets"));
+List<ByteBuffer> cabs = cab.createCabinetSet(1_000_000); // split after 1 MB
+```
 
 ## File timestamps
 

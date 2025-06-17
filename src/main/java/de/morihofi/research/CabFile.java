@@ -127,7 +127,28 @@ public class CabFile {
         addFile(filename, data, attribs, (short) 0, ts);
     }
 
-    public ByteBuffer createCabinet() throws IOException {
+    /**
+     * Recursively adds all files from the given directory. The path inside the cabinet
+     * mirrors the relative path to the supplied directory.
+     *
+     * @param directory directory to read files from
+     * @throws IOException if file reading fails
+     */
+    public void addDirectory(Path directory) throws IOException {
+        Files.walk(directory)
+                .filter(Files::isRegularFile)
+                .forEach(p -> {
+                    Path rel = directory.relativize(p);
+                    String name = rel.toString().replace('\\', '/');
+                    try {
+                        addFile(name, p);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+    }
+
+    private ByteBuffer buildCabinet(boolean incrementIndex) throws IOException {
 
         LOG.info("Creating cabinet of {} files", files.size());
 
@@ -262,8 +283,53 @@ public class CabFile {
         }
 
         cabinetBuffer.flip();
-        cabinetIndex++;
+        if (incrementIndex) {
+            cabinetIndex++;
+        }
         return cabinetBuffer;
+    }
+
+    public ByteBuffer createCabinet() throws IOException {
+        return buildCabinet(true);
+    }
+
+    /**
+     * Creates a set of cabinets if the resulting cabinet would exceed the provided size limit.
+     * The files added to this {@code CabFile} are split across multiple cabinets.
+     *
+     * @param maxCabinetSize maximum size in bytes of a single cabinet
+     * @return list of cabinet buffers in the same order they should be written
+     * @throws IOException if cabinet creation fails
+     */
+    public List<ByteBuffer> createCabinetSet(long maxCabinetSize) throws IOException {
+        List<ByteBuffer> result = new ArrayList<>();
+
+        Map<String, FileEntry> pending = new LinkedHashMap<>(files);
+        files.clear();
+
+        while (!pending.isEmpty()) {
+            files.clear();
+            Iterator<Map.Entry<String, FileEntry>> it = pending.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<String, FileEntry> e = it.next();
+                files.put(e.getKey(), e.getValue());
+                ByteBuffer test = buildCabinet(false);
+                if (test.remaining() > maxCabinetSize && files.size() > 1) {
+                    files.remove(e.getKey());
+                    break;
+                }
+                it.remove();
+                if (test.remaining() > maxCabinetSize) {
+                    break;
+                }
+            }
+
+            ByteBuffer cab = buildCabinet(true);
+            result.add(cab);
+            files.clear();
+        }
+
+        return result;
     }
 
 
