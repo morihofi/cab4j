@@ -1,14 +1,19 @@
-# cabinet4j
+# 🗄️ cab4j - Cabinet Files in pure Java
 
-A Java library for creating cabinet files (`*.cab`) with Java using NIO ByteBuffer. 
-It was created using the [official Microsoft CAB Documentation](docu/%5BMS-CAB%5D.pdf) and doesn't have any dependencies.
+A Java library for creating and reading cabinet files (`*.cab`) with Java using NIO ByteBuffer. 
+It was created using the [official Microsoft CAB Documentation](docu/%5BMS-CAB%5D.pdf) and has almost no dependencies.
 
-- Checksum generation supported
-- Test files are located in `test/`-Directory, this contains the test cab from the pdf in `doku/` directory
-- This implementation makes use of only Java ByteBuffers
+# ✨ Features
+- Checksum supported
+- makes only use of Java NIO2 ByteBuffers
 - Uncompressed, MSZIP, Quantum and LZX compression support
 - Recursive directory packing with subfolder support
 - Splitting archives into multiple cabinets
+- Java 8+ compatible
+
+# 📃 Testing and official docs
+- Test files are located in `test/`-Directory, this contains the test cab from the pdf in `docu/` directory
+
 
 ## File attributes
 
