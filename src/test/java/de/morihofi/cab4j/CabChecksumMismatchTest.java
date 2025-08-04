@@ -4,6 +4,7 @@ import de.morihofi.cab4j.archive.CabArchive;
 import de.morihofi.cab4j.generator.CabGenerator;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 public class CabChecksumMismatchTest {
 
     @Test
-    public void extractionFailsOnChecksumMismatch() throws Exception {
+    public void extractionFailsOnChecksumMismatch() throws IOException {
         ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
 
         CabArchive archive = new CabArchive();

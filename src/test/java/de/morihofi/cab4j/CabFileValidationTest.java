@@ -6,7 +6,8 @@ import org.junit.jupiter.api.Test;
 import java.nio.ByteBuffer;
 import java.util.stream.IntStream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class CabFileValidationTest {
 

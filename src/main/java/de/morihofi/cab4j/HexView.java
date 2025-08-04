@@ -2,6 +2,7 @@ package de.morihofi.cab4j;
 
 import java.nio.ByteBuffer;
 
+@Deprecated
 public class HexView {
     public static void hexView(ByteBuffer byteBuffer) {
         // Number of bytes per row

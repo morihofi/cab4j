@@ -1,14 +1,12 @@
 package de.morihofi.cab4j;
 
+import com.google.common.jimfs.Configuration;
+import com.google.common.jimfs.Jimfs;
 import de.morihofi.cab4j.archive.CabArchive;
 import de.morihofi.cab4j.generator.CabGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
-
-import com.google.common.jimfs.Configuration;
-import com.google.common.jimfs.Jimfs;
-
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,7 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 public class CabDirectoryTest {
 

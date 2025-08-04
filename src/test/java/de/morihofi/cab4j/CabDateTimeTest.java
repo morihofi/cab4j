@@ -1,26 +1,26 @@
 package de.morihofi.cab4j;
 
-import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
-
-import java.nio.file.FileSystem;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.nio.file.attribute.FileTime;
-
 import de.morihofi.cab4j.archive.CabArchive;
 import de.morihofi.cab4j.generator.CabGenerator;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.file.FileSystem;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 public class CabDateTimeTest {
     @Test
-    public void preserveFileTime() throws Exception {
+    public void preserveFileTime() throws IOException {
         try (FileSystem fs = Jimfs.newFileSystem(Configuration.windows())) {
             Path temp = fs.getPath("f.txt");
             Files.write(temp, "hi".getBytes());

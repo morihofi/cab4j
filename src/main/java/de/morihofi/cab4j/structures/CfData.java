@@ -32,7 +32,6 @@ public class CfData {
         this.cbUncomp = cbUncomp;
     }
 
-
     public int getByteSize(){
         return 8;
     }

@@ -3,6 +3,7 @@ package de.morihofi.cab4j;
 import de.morihofi.cab4j.structures.CfFile;
 import de.morihofi.cab4j.structures.CfFolder;
 import de.morihofi.cab4j.util.ChecksumHelper;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

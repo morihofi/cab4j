@@ -2,13 +2,16 @@ package de.morihofi.cab4j.archive;
 
 import de.morihofi.cab4j.file.FileUtils;
 import de.morihofi.cab4j.structures.CfFile;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.DosFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.*;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Represents the contents of a cabinet archive. It merely stores file data and

@@ -115,7 +115,7 @@ public class CabGenerator {
                 byte[] comp = bos.toByteArray();
                 dataBlock = ByteBuffer.wrap(comp);
             } else if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX ||
-                       compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_QUANTUM) {
+                    compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_QUANTUM) {
                 java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
                 byte[] arr = new byte[folderBuf.remaining()];
                 folderBuf.duplicate().get(arr);
@@ -192,7 +192,9 @@ public class CabGenerator {
         return buildCabinet(archive.getFileEntries(), incrementIndex);
     }
 
-    /** Generate a single cabinet file. */
+    /**
+     * Generate a single cabinet file.
+     */
     public ByteBuffer createCabinet() throws IOException {
         return buildCabinet(true);
     }
@@ -245,7 +247,9 @@ public class CabGenerator {
         this.compressionType = compressionType;
     }
 
-    /** Starts a new cabinet set by resetting the set ID and cabinet index. */
+    /**
+     * Starts a new cabinet set by resetting the set ID and cabinet index.
+     */
     public void resetCabinetSet() {
         this.cabinetSetId = null;
         this.cabinetIndex = 0;

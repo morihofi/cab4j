@@ -5,6 +5,7 @@ import de.morihofi.cab4j.generator.CabGenerator;
 import de.morihofi.cab4j.structures.CfFolder;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 public class CabLzxTest {
     @Test
-    public void lzxCompressionRoundtrip() throws Exception {
+    public void lzxCompressionRoundtrip() throws IOException {
         ByteBuffer hello = ByteBuffer.wrap(TestData.HELLO_C);
         CabArchive archive = new CabArchive();
         archive.addFile("hello.c", hello);
