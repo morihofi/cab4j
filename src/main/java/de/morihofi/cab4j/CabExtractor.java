@@ -95,94 +95,104 @@ public class CabExtractor {
         Map<Integer, ByteBuffer> folders = new LinkedHashMap<>();
         for (int i = 0; i < cFolders; i++) {
             buffer.position(folderCoffCabStart[i]);
-            int csum = buffer.getInt();
-            short cbData = buffer.getShort();
-            short cbUncomp = buffer.getShort();
-
-            ByteBuffer dataSlice = buffer.slice();
-            dataSlice.limit(Short.toUnsignedInt(cbData));
-
-            ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData) + 4);
-            checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
-            checksumBuf.putShort(cbData);
-            checksumBuf.putShort(cbUncomp);
-            checksumBuf.put(dataSlice.duplicate());
-            checksumBuf.flip();
-            int calculated = ChecksumHelper.cabChecksum(checksumBuf);
-            if (calculated != csum) {
-                throw new IllegalStateException("CFDATA checksum mismatch");
-            }
-
             CfFolder.COMPRESS_TYPE comp = CfFolder.COMPRESS_TYPE.fromValue(Short.toUnsignedInt(folderTypeCompress[i]));
-            ByteBuffer uncompressed;
-            switch (comp) {
-                case TCOMP_TYPE_NONE:
-                    uncompressed = ByteBuffer.allocate(Short.toUnsignedInt(cbUncomp));
-                    uncompressed.put(dataSlice.duplicate());
-                    uncompressed.flip();
-                    break;
-                case TCOMP_TYPE_MSZIP:
-                    if (dataSlice.remaining() < 2 || dataSlice.get() != 'C' || dataSlice.get() != 'K') {
-                        throw new IllegalStateException("Invalid MSZIP signature");
-                    }
-                    byte[] compBytes = new byte[dataSlice.remaining()];
-                    dataSlice.get(compBytes);
-                    java.util.zip.Inflater inflater = new java.util.zip.Inflater(true);
-                    inflater.setInput(compBytes);
-                    byte[] out = new byte[Short.toUnsignedInt(cbUncomp)];
-                    try {
-                        int written = inflater.inflate(out);
-                        if (written < out.length) {
-                            byte[] tmp = new byte[out.length];
-                            System.arraycopy(out, 0, tmp, 0, written);
-                            out = java.util.Arrays.copyOf(tmp, written);
+            java.io.ByteArrayOutputStream folderOut = new java.io.ByteArrayOutputStream();
+
+            for (int j = 0; j < Short.toUnsignedInt(folderCCfData[i]); j++) {
+                int csum = buffer.getInt();
+                short cbData = buffer.getShort();
+                short cbUncomp = buffer.getShort();
+
+                ByteBuffer dataSlice = buffer.slice();
+                dataSlice.limit(Short.toUnsignedInt(cbData));
+
+                ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData) + 4);
+                checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
+                checksumBuf.putShort(cbData);
+                checksumBuf.putShort(cbUncomp);
+                checksumBuf.put(dataSlice.duplicate());
+                checksumBuf.flip();
+                int calculated = ChecksumHelper.cabChecksum(checksumBuf);
+                if (calculated != csum) {
+                    throw new IllegalStateException("CFDATA checksum mismatch");
+                }
+
+                ByteBuffer uncompressed;
+                switch (comp) {
+                    case TCOMP_TYPE_NONE:
+                        uncompressed = ByteBuffer.allocate(Short.toUnsignedInt(cbUncomp));
+                        uncompressed.put(dataSlice.duplicate());
+                        uncompressed.flip();
+                        break;
+                    case TCOMP_TYPE_MSZIP:
+                        if (dataSlice.remaining() < 2 || dataSlice.get() != 'C' || dataSlice.get() != 'K') {
+                            throw new IllegalStateException("Invalid MSZIP signature");
                         }
-                    } catch (java.util.zip.DataFormatException e) {
-                        throw new IllegalStateException("MSZIP decompression failed", e);
-                    } finally {
-                        inflater.end();
-                    }
-                    uncompressed = ByteBuffer.wrap(out);
-                    break;
-                case TCOMP_TYPE_QUANTUM:
-                    byte[] qBytes = new byte[dataSlice.remaining()];
-                    dataSlice.get(qBytes);
-                    java.io.ByteArrayInputStream qbis = new java.io.ByteArrayInputStream(qBytes);
-                    byte[] qOut = new byte[Short.toUnsignedInt(cbUncomp)];
-                    try (org.tukaani.xz.XZInputStream qlz = new org.tukaani.xz.XZInputStream(qbis)) {
-                        int qlen = qlz.read(qOut);
-                        if (qlen < qOut.length) {
-                            byte[] tmp = new byte[qlen];
-                            System.arraycopy(qOut, 0, tmp, 0, qlen);
-                            qOut = java.util.Arrays.copyOf(tmp, qlen);
+                        byte[] compBytes = new byte[dataSlice.remaining()];
+                        dataSlice.get(compBytes);
+                        java.util.zip.Inflater inflater = new java.util.zip.Inflater(true);
+                        inflater.setInput(compBytes);
+                        byte[] out = new byte[Short.toUnsignedInt(cbUncomp)];
+                        try {
+                            int written = inflater.inflate(out);
+                            if (written < out.length) {
+                                byte[] tmp = new byte[out.length];
+                                System.arraycopy(out, 0, tmp, 0, written);
+                                out = java.util.Arrays.copyOf(tmp, written);
+                            }
+                        } catch (java.util.zip.DataFormatException e) {
+                            throw new IllegalStateException("MSZIP decompression failed", e);
+                        } finally {
+                            inflater.end();
                         }
-                    } catch (java.io.IOException e) {
-                        throw new IllegalStateException("Quantum decompression failed", e);
-                    }
-                    uncompressed = ByteBuffer.wrap(qOut);
-                    break;
-                case TCOMP_TYPE_LZX:
-                    byte[] lzxBytes = new byte[dataSlice.remaining()];
-                    dataSlice.get(lzxBytes);
-                    java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(lzxBytes);
-                    byte[] lzxOut = new byte[Short.toUnsignedInt(cbUncomp)];
-                    try (org.tukaani.xz.XZInputStream lz = new org.tukaani.xz.XZInputStream(bis)) {
-                        int len = lz.read(lzxOut);
-                        if (len < lzxOut.length) {
-                            byte[] tmp = new byte[len];
-                            System.arraycopy(lzxOut, 0, tmp, 0, len);
-                            lzxOut = java.util.Arrays.copyOf(tmp, len);
+                        uncompressed = ByteBuffer.wrap(out);
+                        break;
+                    case TCOMP_TYPE_QUANTUM:
+                        byte[] qBytes = new byte[dataSlice.remaining()];
+                        dataSlice.get(qBytes);
+                        java.io.ByteArrayInputStream qbis = new java.io.ByteArrayInputStream(qBytes);
+                        byte[] qOut = new byte[Short.toUnsignedInt(cbUncomp)];
+                        try (org.tukaani.xz.XZInputStream qlz = new org.tukaani.xz.XZInputStream(qbis)) {
+                            int qlen = qlz.read(qOut);
+                            if (qlen < qOut.length) {
+                                byte[] tmp = new byte[qlen];
+                                System.arraycopy(qOut, 0, tmp, 0, qlen);
+                                qOut = java.util.Arrays.copyOf(tmp, qlen);
+                            }
+                        } catch (java.io.IOException e) {
+                            throw new IllegalStateException("Quantum decompression failed", e);
                         }
-                    } catch (java.io.IOException e) {
-                        throw new IllegalStateException("LZX decompression failed", e);
-                    }
-                    uncompressed = ByteBuffer.wrap(lzxOut);
-                    break;
-                default:
-                    throw new UnsupportedOperationException("Unsupported compression type: " + comp);
+                        uncompressed = ByteBuffer.wrap(qOut);
+                        break;
+                    case TCOMP_TYPE_LZX:
+                        byte[] lzxBytes = new byte[dataSlice.remaining()];
+                        dataSlice.get(lzxBytes);
+                        java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(lzxBytes);
+                        byte[] lzxOut = new byte[Short.toUnsignedInt(cbUncomp)];
+                        try (org.tukaani.xz.XZInputStream lz = new org.tukaani.xz.XZInputStream(bis)) {
+                            int len = lz.read(lzxOut);
+                            if (len < lzxOut.length) {
+                                byte[] tmp = new byte[len];
+                                System.arraycopy(lzxOut, 0, tmp, 0, len);
+                                lzxOut = java.util.Arrays.copyOf(tmp, len);
+                            }
+                        } catch (java.io.IOException e) {
+                            throw new IllegalStateException("LZX decompression failed", e);
+                        }
+                        uncompressed = ByteBuffer.wrap(lzxOut);
+                        break;
+                    default:
+                        throw new UnsupportedOperationException("Unsupported compression type: " + comp);
+                }
+
+                byte[] arr = new byte[uncompressed.remaining()];
+                uncompressed.duplicate().get(arr);
+                folderOut.write(arr, 0, arr.length);
+
+                buffer.position(buffer.position() + Short.toUnsignedInt(cbData));
             }
 
-            folders.put(i, uncompressed);
+            folders.put(i, ByteBuffer.wrap(folderOut.toByteArray()));
         }
 
         Map<String, ExtractedFile> result = new LinkedHashMap<>();

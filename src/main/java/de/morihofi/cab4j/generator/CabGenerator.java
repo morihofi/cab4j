@@ -85,8 +85,8 @@ public class CabGenerator {
         cfHeader.setCFolders((short) folderCount);
 
         List<CfFolder> folderDefs = new ArrayList<>();
-        List<CfData> dataDefs = new ArrayList<>();
-        List<ByteBuffer> dataBlocks = new ArrayList<>();
+        List<List<CfData>> dataDefsPerFolder = new ArrayList<>();
+        List<List<ByteBuffer>> dataBlocksPerFolder = new ArrayList<>();
 
         for (int i = 0; i < folderCount; i++) {
             int uncompSize = folderSizes.getOrDefault(i, 0);
@@ -101,58 +101,72 @@ public class CabGenerator {
             }
             folderBuf.flip();
 
-            ByteBuffer dataBlock;
-            if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP) {
-                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-                bos.write('C');
-                bos.write('K');
-                Deflater def = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
-                try (DeflaterOutputStream dos = new DeflaterOutputStream(bos, def)) {
-                    byte[] arr = new byte[folderBuf.remaining()];
-                    folderBuf.duplicate().get(arr);
-                    dos.write(arr);
-                }
-                byte[] comp = bos.toByteArray();
-                dataBlock = ByteBuffer.wrap(comp);
-            } else if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX ||
-                    compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_QUANTUM) {
-                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-                byte[] arr = new byte[folderBuf.remaining()];
-                folderBuf.duplicate().get(arr);
-                org.tukaani.xz.LZMA2Options opts = new org.tukaani.xz.LZMA2Options();
-                opts.setDictSize(1 << 16);
-                try (org.tukaani.xz.XZOutputStream xzOut = new org.tukaani.xz.XZOutputStream(bos, opts)) {
-                    xzOut.write(arr);
-                }
-                byte[] comp = bos.toByteArray();
-                dataBlock = ByteBuffer.wrap(comp);
-            } else {
-                dataBlock = folderBuf.duplicate();
-            }
+            List<CfData> folderCfData = new ArrayList<>();
+            List<ByteBuffer> folderBlocks = new ArrayList<>();
 
-            CfData cfData = new CfData();
-            cfData.setCbUncomp((short) folderBuf.remaining());
-            cfData.setCbData((short) dataBlock.remaining());
+            while (folderBuf.hasRemaining()) {
+                int chunkSize = Math.min(folderBuf.remaining(), 0xFFFF);
+                ByteBuffer chunk = folderBuf.slice();
+                chunk.limit(chunkSize);
 
-            if (enableChecksum) {
-                ByteBuffer checksumBuffer = ByteBuffer.allocate(Short.toUnsignedInt(cfData.getCbData()) + 4);
-                checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
-                checksumBuffer.putShort(cfData.getCbData());
-                checksumBuffer.putShort(cfData.getCbUncomp());
-                checksumBuffer.put(dataBlock.duplicate());
-                checksumBuffer.flip();
-                cfData.setCsum(ChecksumHelper.cabChecksum(checksumBuffer));
-            } else {
-                cfData.setCsum(0);
+                ByteBuffer dataBlock;
+                if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP) {
+                    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                    bos.write('C');
+                    bos.write('K');
+                    Deflater def = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+                    try (DeflaterOutputStream dos = new DeflaterOutputStream(bos, def)) {
+                        byte[] arr = new byte[chunk.remaining()];
+                        chunk.duplicate().get(arr);
+                        dos.write(arr);
+                    }
+                    byte[] comp = bos.toByteArray();
+                    dataBlock = ByteBuffer.wrap(comp);
+                } else if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX ||
+                        compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_QUANTUM) {
+                    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                    byte[] arr = new byte[chunk.remaining()];
+                    chunk.duplicate().get(arr);
+                    org.tukaani.xz.LZMA2Options opts = new org.tukaani.xz.LZMA2Options();
+                    opts.setDictSize(1 << 16);
+                    try (org.tukaani.xz.XZOutputStream xzOut = new org.tukaani.xz.XZOutputStream(bos, opts)) {
+                        xzOut.write(arr);
+                    }
+                    byte[] comp = bos.toByteArray();
+                    dataBlock = ByteBuffer.wrap(comp);
+                } else {
+                    dataBlock = chunk.duplicate();
+                }
+
+                CfData cfData = new CfData();
+                cfData.setCbUncomp((short) chunk.remaining());
+                cfData.setCbData((short) dataBlock.remaining());
+
+                if (enableChecksum) {
+                    ByteBuffer checksumBuffer = ByteBuffer.allocate(Short.toUnsignedInt(cfData.getCbData()) + 4);
+                    checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
+                    checksumBuffer.putShort(cfData.getCbData());
+                    checksumBuffer.putShort(cfData.getCbUncomp());
+                    checksumBuffer.put(dataBlock.duplicate());
+                    checksumBuffer.flip();
+                    cfData.setCsum(ChecksumHelper.cabChecksum(checksumBuffer));
+                } else {
+                    cfData.setCsum(0);
+                }
+
+                folderCfData.add(cfData);
+                folderBlocks.add(dataBlock);
+
+                folderBuf.position(folderBuf.position() + chunkSize);
             }
 
             CfFolder cfFolder = new CfFolder();
             cfFolder.setTypeCompress(compressionType);
-            cfFolder.setcCfData((short) 1);
+            cfFolder.setcCfData((short) folderCfData.size());
 
             folderDefs.add(cfFolder);
-            dataDefs.add(cfData);
-            dataBlocks.add(dataBlock);
+            dataDefsPerFolder.add(folderCfData);
+            dataBlocksPerFolder.add(folderBlocks);
         }
 
         int coffFiles = cfHeader.getByteSize() + folderDefs.size() * folderDefs.get(0).getByteSize();
@@ -162,7 +176,11 @@ public class CabGenerator {
         for (int i = 0; i < folderCount; i++) {
             CfFolder f = folderDefs.get(i);
             f.setCoffCabStart(offset);
-            offset += dataDefs.get(i).getByteSize() + dataBlocks.get(i).remaining();
+            List<CfData> defs = dataDefsPerFolder.get(i);
+            List<ByteBuffer> blocks = dataBlocksPerFolder.get(i);
+            for (int j = 0; j < defs.size(); j++) {
+                offset += defs.get(j).getByteSize() + blocks.get(j).remaining();
+            }
         }
         cfHeader.setCbCabinet(offset);
 
@@ -176,9 +194,13 @@ public class CabGenerator {
             cabinetBuffer.put(cfFile.build());
         }
         for (int i = 0; i < folderCount; i++) {
-            cabinetBuffer.put(dataDefs.get(i).build());
-            LOG.info("Adding {} bytes of {} data", dataBlocks.get(i).remaining(), compressionType);
-            cabinetBuffer.put(dataBlocks.get(i).duplicate());
+            List<CfData> defs = dataDefsPerFolder.get(i);
+            List<ByteBuffer> blocks = dataBlocksPerFolder.get(i);
+            for (int j = 0; j < defs.size(); j++) {
+                cabinetBuffer.put(defs.get(j).build());
+                LOG.info("Adding {} bytes of {} data", blocks.get(j).remaining(), compressionType);
+                cabinetBuffer.put(blocks.get(j).duplicate());
+            }
         }
 
         cabinetBuffer.flip();
