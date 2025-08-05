@@ -8,6 +8,9 @@ import java.nio.ByteOrder;
  */
 public class ChecksumHelper {
 
+    private ChecksumHelper() {
+    }
+
     /**
      * Calculates the CAB checksum for the supplied data block. The algorithm
      * implements the procedure described in section 3.1 of the MS-CAB

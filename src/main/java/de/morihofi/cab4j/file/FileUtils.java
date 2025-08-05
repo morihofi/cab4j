@@ -7,6 +7,10 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 
 public class FileUtils {
+
+    private FileUtils() {
+    }
+
     public static ByteBuffer readFile(Path path) throws IOException {
         byte[] data = Files.readAllBytes(path);
         return ByteBuffer.wrap(data);
