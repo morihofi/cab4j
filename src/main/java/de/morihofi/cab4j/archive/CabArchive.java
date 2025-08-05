@@ -113,11 +113,29 @@ public class CabArchive {
 
     /**
      * Add a file using an {@link InputStream}. The stream will be consumed when
-     * the cabinet is generated.
+     * the cabinet is generated. Duplicate file names are rejected.
      */
     public void addFile(String name, InputStream in, long size, short attribs, short folder,
                         java.time.LocalDateTime ts) {
-        if (files.size() >= MAX_FILES) {
+        addFile(name, in, size, attribs, folder, ts, false);
+    }
+
+    /**
+     * Add a file using an {@link InputStream}. The stream will be consumed when
+     * the cabinet is generated.
+     *
+     * @param replaceExisting when {@code true}, an existing file with the same
+     *                        name will be replaced. When {@code false}, an
+     *                        {@link IllegalArgumentException} is thrown if a
+     *                        file with the same name already exists.
+     */
+    public void addFile(String name, InputStream in, long size, short attribs, short folder,
+                        java.time.LocalDateTime ts, boolean replaceExisting) {
+        boolean exists = files.containsKey(name);
+        if (exists && !replaceExisting) {
+            throw new IllegalArgumentException("File \"" + name + "\" already exists in archive");
+        }
+        if (!exists && files.size() >= MAX_FILES) {
             throw new IllegalArgumentException("CAB File limit reached");
         }
         if (size > MAX_FILE_SIZE) {
@@ -126,6 +144,16 @@ public class CabArchive {
                             + " bytes). Max allowed size is " + MAX_FILE_SIZE + " bytes");
         }
         files.put(name, new FileEntry(in, size, attribs, folder, ts));
+    }
+
+    /**
+     * Remove a file from the archive.
+     *
+     * @param filename the name of the file to remove
+     * @return {@code true} if the file was present and removed
+     */
+    public boolean removeFile(String filename) {
+        return files.remove(filename) != null;
     }
 
     /**
