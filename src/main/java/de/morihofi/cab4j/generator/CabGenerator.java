@@ -9,22 +9,33 @@ import de.morihofi.cab4j.util.ChecksumHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.zip.Deflater;
-import java.util.zip.DeflaterOutputStream;
+
+import org.tukaani.xz.LZMA2Options;
+import org.tukaani.xz.XZOutputStream;
 
 /**
- * Generates CAB files from a {@link CabArchive} instance.
+ * Generates CAB files from a {@link CabArchive} instance. The implementation
+ * operates in a streaming manner using {@link ReadableByteChannel} and
+ * {@link WritableByteChannel} so that large files do not need to be kept in
+ * memory completely.
  */
 public class CabGenerator {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+    private static final int CFDATA_MAX = 0xFFFF;
 
     private final CabArchive archive;
     private boolean enableChecksum = true;
@@ -36,221 +47,194 @@ public class CabGenerator {
         this.archive = archive;
     }
 
-    private ByteBuffer buildCabinet(Map<String, CabArchive.FileEntry> files, boolean incrementIndex) throws IOException {
+    /**
+     * Writes a cabinet containing all files of the underlying archive to the
+     * provided {@link WritableByteChannel}.
+     */
+    public void writeCabinet(WritableByteChannel out) throws IOException {
+        writeCabinet(archive.getFileEntries(), out, true);
+    }
+
+    private static class DataBlock {
+        final CfData header;
+        final ByteBuffer data;
+
+        DataBlock(CfData h, ByteBuffer d) {
+            this.header = h;
+            this.data = d;
+        }
+    }
+
+    private void writeCabinet(Map<String, CabArchive.FileEntry> files, WritableByteChannel out,
+                              boolean incrementIndex) throws IOException {
         LOG.info("Creating cabinet of {} files", files.size());
 
-        CfHeader cfHeader = new CfHeader();
-        cfHeader.setCFiles((short) files.size());
+        CfHeader header = new CfHeader();
+        header.setCFiles((short) files.size());
         if (cabinetSetId == null) {
             cabinetSetId = (short) ThreadLocalRandom.current().nextInt(0x10000);
         }
-        cfHeader.setSetID(cabinetSetId);
-        cfHeader.setiCabinet(cabinetIndex);
+        header.setSetID(cabinetSetId);
+        header.setiCabinet(cabinetIndex);
 
-        List<CfFile> cfFileDefinitions = new ArrayList<>();
-        int cfFileOffsets = 0;
+        List<CfFile> cfFiles = new ArrayList<>();
+        Map<Integer, Integer> folderDataBlocks = new HashMap<>();
+        Map<Integer, List<DataBlock>> folderBlocks = new HashMap<>();
         Map<Integer, Integer> folderOffsets = new HashMap<>();
-        Map<Integer, Integer> folderSizes = new HashMap<>();
-        Map<Integer, List<ByteBuffer>> folderData = new HashMap<>();
+        Map<Integer, Long> folderCompressedSizes = new HashMap<>();
         int maxFolder = 0;
+        int cfFileSectionSize = 0;
 
-        for (Map.Entry<String, CabArchive.FileEntry> entry : files.entrySet()) {
-            String fileName = entry.getKey();
-            CabArchive.FileEntry fileEntry = entry.getValue();
-            ByteBuffer fileByte = fileEntry.data;
-            short folder = fileEntry.folder;
+        int chunkLimit = compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_NONE ? CFDATA_MAX : 0x8000;
 
-            LOG.info("Creating CFFile entry for file {} with file contents of {} byte", fileName, fileByte.remaining());
+        for (Map.Entry<String, CabArchive.FileEntry> e : files.entrySet()) {
+            String name = e.getKey();
+            CabArchive.FileEntry fe = e.getValue();
+            short folder = fe.folder;
 
             CfFile cfFile = new CfFile();
-            cfFile.setCbFile(fileByte.remaining());
+            cfFile.setCbFile((int) fe.size);
             cfFile.setiFolder(folder);
-            cfFile.setDateTime(fileEntry.lastModified);
-            cfFile.setAttribs(fileEntry.attribs);
-            cfFile.setSzName(fileName.getBytes(StandardCharsets.UTF_8));
-
+            cfFile.setDateTime(fe.lastModified);
+            cfFile.setAttribs(fe.attribs);
+            cfFile.setSzName(name.getBytes(StandardCharsets.UTF_8));
             int off = folderOffsets.getOrDefault((int) folder, 0);
             cfFile.setUoffFolderStart(off);
-            folderOffsets.put((int) folder, off + fileByte.remaining());
+            folderOffsets.put((int) folder, off + (int) fe.size);
+            cfFiles.add(cfFile);
+            cfFileSectionSize += cfFile.getByteSize();
 
-            cfFileDefinitions.add(cfFile);
-            cfFileOffsets += cfFile.getByteSize();
+            List<DataBlock> blocks = folderBlocks.computeIfAbsent((int) folder, k -> new ArrayList<>());
 
-            folderSizes.put((int) folder, folderSizes.getOrDefault((int) folder, 0) + fileByte.remaining());
-            folderData.computeIfAbsent((int) folder, k -> new ArrayList<>()).add(fileByte.duplicate());
+            try (ReadableByteChannel ch = Channels.newChannel(fe.in)) {
+                long remaining = fe.size;
+                while (remaining > 0) {
+                    int chunk = (int) Math.min(remaining, chunkLimit);
+                    ByteBuffer raw = ByteBuffer.allocate(chunk);
+                    readFully(ch, raw);
+                    raw.flip();
+
+                    ByteBuffer compBuf;
+                    switch (compressionType) {
+                        case TCOMP_TYPE_MSZIP:
+                            byte[] outBytes = new byte[chunk + 256];
+                            Deflater def = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
+                            def.setInput(raw.array(), raw.position(), raw.remaining());
+                            def.finish();
+                            int clen = def.deflate(outBytes);
+                            def.end();
+                            ByteBuffer tmp = ByteBuffer.allocate(clen + 2);
+                            tmp.put((byte) 'C');
+                            tmp.put((byte) 'K');
+                            tmp.put(outBytes, 0, clen);
+                            tmp.flip();
+                            compBuf = tmp;
+                            break;
+                        case TCOMP_TYPE_LZX:
+                        case TCOMP_TYPE_QUANTUM:
+                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                            try (XZOutputStream xz = new XZOutputStream(baos, new LZMA2Options())) {
+                                xz.write(raw.array(), raw.position(), raw.remaining());
+                            }
+                            compBuf = ByteBuffer.wrap(baos.toByteArray());
+                            break;
+                        case TCOMP_TYPE_NONE:
+                        default:
+                            compBuf = raw.duplicate();
+                            break;
+                    }
+
+                    CfData cfData = new CfData();
+                    cfData.setCbData((short) compBuf.remaining());
+                    cfData.setCbUncomp((short) chunk);
+
+                    if (enableChecksum) {
+                        ByteBuffer checksumBuffer = ByteBuffer.allocate(compBuf.remaining() + 4);
+                        checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
+                        checksumBuffer.putShort((short) compBuf.remaining());
+                        checksumBuffer.putShort((short) chunk);
+                        checksumBuffer.put(compBuf.duplicate());
+                        checksumBuffer.flip();
+                        cfData.setCsum(ChecksumHelper.cabChecksum(checksumBuffer));
+                    } else {
+                        cfData.setCsum(0);
+                    }
+
+                    blocks.add(new DataBlock(cfData, compBuf.duplicate()));
+                    folderCompressedSizes.put((int) folder,
+                            folderCompressedSizes.getOrDefault((int) folder, 0L)
+                                    + cfData.getByteSize() + compBuf.remaining());
+                    folderDataBlocks.put((int) folder,
+                            folderDataBlocks.getOrDefault((int) folder, 0) + 1);
+
+                    remaining -= chunk;
+                }
+            }
+
             if (folder > maxFolder) maxFolder = folder;
         }
 
         int folderCount = maxFolder + 1;
-        cfHeader.setCFolders((short) folderCount);
+        header.setCFolders((short) folderCount);
 
         List<CfFolder> folderDefs = new ArrayList<>();
-        List<List<CfData>> dataDefsPerFolder = new ArrayList<>();
-        List<List<ByteBuffer>> dataBlocksPerFolder = new ArrayList<>();
+        int coffFiles = header.getByteSize() + folderCount * new CfFolder().getByteSize();
+        header.setCoffFiles(coffFiles);
 
+        int dataOffset = coffFiles + cfFileSectionSize;
         for (int i = 0; i < folderCount; i++) {
-            int uncompSize = folderSizes.getOrDefault(i, 0);
-            ByteBuffer folderBuf = ByteBuffer.allocate(uncompSize);
-            List<ByteBuffer> pieces = folderData.get(i);
-            if (pieces != null) {
-                for (ByteBuffer bb : pieces) {
-                    ByteBuffer dup = bb.duplicate();
-                    dup.position(0);
-                    folderBuf.put(dup);
-                }
-            }
-            folderBuf.flip();
-
-            List<CfData> folderCfData = new ArrayList<>();
-            List<ByteBuffer> folderBlocks = new ArrayList<>();
-
-            while (folderBuf.hasRemaining()) {
-                int chunkSize = Math.min(folderBuf.remaining(), 0xFFFF);
-                ByteBuffer chunk = folderBuf.slice();
-                chunk.limit(chunkSize);
-
-                ByteBuffer dataBlock;
-                if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP) {
-                    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-                    bos.write('C');
-                    bos.write('K');
-                    Deflater def = new Deflater(Deflater.DEFAULT_COMPRESSION, true);
-                    try (DeflaterOutputStream dos = new DeflaterOutputStream(bos, def)) {
-                        byte[] arr = new byte[chunk.remaining()];
-                        chunk.duplicate().get(arr);
-                        dos.write(arr);
-                    }
-                    byte[] comp = bos.toByteArray();
-                    dataBlock = ByteBuffer.wrap(comp);
-                } else if (compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX ||
-                        compressionType == CfFolder.COMPRESS_TYPE.TCOMP_TYPE_QUANTUM) {
-                    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-                    byte[] arr = new byte[chunk.remaining()];
-                    chunk.duplicate().get(arr);
-                    org.tukaani.xz.LZMA2Options opts = new org.tukaani.xz.LZMA2Options();
-                    opts.setDictSize(1 << 16);
-                    try (org.tukaani.xz.XZOutputStream xzOut = new org.tukaani.xz.XZOutputStream(bos, opts)) {
-                        xzOut.write(arr);
-                    }
-                    byte[] comp = bos.toByteArray();
-                    dataBlock = ByteBuffer.wrap(comp);
-                } else {
-                    dataBlock = chunk.duplicate();
-                }
-
-                CfData cfData = new CfData();
-                cfData.setCbUncomp((short) chunk.remaining());
-                cfData.setCbData((short) dataBlock.remaining());
-
-                if (enableChecksum) {
-                    ByteBuffer checksumBuffer = ByteBuffer.allocate(Short.toUnsignedInt(cfData.getCbData()) + 4);
-                    checksumBuffer.order(ByteOrder.LITTLE_ENDIAN);
-                    checksumBuffer.putShort(cfData.getCbData());
-                    checksumBuffer.putShort(cfData.getCbUncomp());
-                    checksumBuffer.put(dataBlock.duplicate());
-                    checksumBuffer.flip();
-                    cfData.setCsum(ChecksumHelper.cabChecksum(checksumBuffer));
-                } else {
-                    cfData.setCsum(0);
-                }
-
-                folderCfData.add(cfData);
-                folderBlocks.add(dataBlock);
-
-                folderBuf.position(folderBuf.position() + chunkSize);
-            }
-
-            CfFolder cfFolder = new CfFolder();
-            cfFolder.setTypeCompress(compressionType);
-            cfFolder.setcCfData((short) folderCfData.size());
-
-            folderDefs.add(cfFolder);
-            dataDefsPerFolder.add(folderCfData);
-            dataBlocksPerFolder.add(folderBlocks);
+            long compSize = folderCompressedSizes.getOrDefault(i, 0L);
+            int blocks = folderDataBlocks.getOrDefault(i, 0);
+            CfFolder folder = new CfFolder();
+            folder.setTypeCompress(compressionType);
+            folder.setcCfData((short) blocks);
+            folder.setCoffCabStart(dataOffset);
+            dataOffset += (int) compSize;
+            folderDefs.add(folder);
         }
+        header.setCbCabinet(dataOffset);
 
-        int coffFiles = cfHeader.getByteSize() + folderDefs.size() * folderDefs.get(0).getByteSize();
-        cfHeader.setCoffFiles(coffFiles);
-
-        int offset = coffFiles + cfFileOffsets;
-        for (int i = 0; i < folderCount; i++) {
-            CfFolder f = folderDefs.get(i);
-            f.setCoffCabStart(offset);
-            List<CfData> defs = dataDefsPerFolder.get(i);
-            List<ByteBuffer> blocks = dataBlocksPerFolder.get(i);
-            for (int j = 0; j < defs.size(); j++) {
-                offset += defs.get(j).getByteSize() + blocks.get(j).remaining();
-            }
-        }
-        cfHeader.setCbCabinet(offset);
-
-        ByteBuffer cabinetBuffer = ByteBuffer.allocate(cfHeader.getCbCabinet());
-        cabinetBuffer.order(ByteOrder.LITTLE_ENDIAN);
-        cabinetBuffer.put(cfHeader.build());
+        out.write(header.build());
         for (CfFolder f : folderDefs) {
-            cabinetBuffer.put(f.build());
+            out.write(f.build());
         }
-        for (CfFile cfFile : cfFileDefinitions) {
-            cabinetBuffer.put(cfFile.build());
+        for (CfFile f : cfFiles) {
+            out.write(f.build());
         }
+
         for (int i = 0; i < folderCount; i++) {
-            List<CfData> defs = dataDefsPerFolder.get(i);
-            List<ByteBuffer> blocks = dataBlocksPerFolder.get(i);
-            for (int j = 0; j < defs.size(); j++) {
-                cabinetBuffer.put(defs.get(j).build());
-                LOG.info("Adding {} bytes of {} data", blocks.get(j).remaining(), compressionType);
-                cabinetBuffer.put(blocks.get(j).duplicate());
+            List<DataBlock> list = folderBlocks.get(i);
+            if (list == null) continue;
+            for (DataBlock db : list) {
+                out.write(db.header.build());
+                out.write(db.data.duplicate());
             }
         }
 
-        cabinetBuffer.flip();
         if (incrementIndex) {
             cabinetIndex++;
         }
-        return cabinetBuffer;
     }
 
-    private ByteBuffer buildCabinet(boolean incrementIndex) throws IOException {
-        return buildCabinet(archive.getFileEntries(), incrementIndex);
+    private static void readFully(ReadableByteChannel ch, ByteBuffer buf) throws IOException {
+        while (buf.hasRemaining()) {
+            if (ch.read(buf) < 0) {
+                throw new IOException("Unexpected end of stream");
+            }
+        }
     }
 
     /**
-     * Generate a single cabinet file.
+     * Convenience method returning the generated cabinet as a {@link ByteBuffer}.
+     * The underlying input streams are consumed and the entire cabinet is kept in
+     * memory.
      */
     public ByteBuffer createCabinet() throws IOException {
-        return buildCabinet(true);
-    }
-
-    /**
-     * Creates a set of cabinets if the resulting cabinet would exceed the provided size limit.
-     * The files contained in the supplied archive are split across multiple cabinets.
-     */
-    public List<ByteBuffer> createCabinetSet(long maxCabinetSize) throws IOException {
-        List<ByteBuffer> result = new ArrayList<>();
-
-        Map<String, CabArchive.FileEntry> pending = new LinkedHashMap<>(archive.getFileEntries());
-
-        while (!pending.isEmpty()) {
-            Map<String, CabArchive.FileEntry> part = new LinkedHashMap<>();
-            Iterator<Map.Entry<String, CabArchive.FileEntry>> it = pending.entrySet().iterator();
-            while (it.hasNext()) {
-                Map.Entry<String, CabArchive.FileEntry> e = it.next();
-                part.put(e.getKey(), e.getValue());
-                ByteBuffer test = buildCabinet(part, false);
-                if (test.remaining() > maxCabinetSize && part.size() > 1) {
-                    part.remove(e.getKey());
-                    break;
-                }
-                it.remove();
-                if (test.remaining() > maxCabinetSize) {
-                    break;
-                }
-            }
-            ByteBuffer cab = buildCabinet(part, true);
-            result.add(cab);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        try (WritableByteChannel ch = Channels.newChannel(bos)) {
+            writeCabinet(ch);
         }
-
-        return result;
+        return ByteBuffer.wrap(bos.toByteArray());
     }
 
     public boolean isEnableChecksum() {
@@ -277,3 +261,4 @@ public class CabGenerator {
         this.cabinetIndex = 0;
     }
 }
+

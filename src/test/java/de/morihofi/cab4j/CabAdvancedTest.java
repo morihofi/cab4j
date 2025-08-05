@@ -12,6 +12,7 @@ import java.nio.ByteOrder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CabAdvancedTest {
 
@@ -139,6 +140,7 @@ public class CabAdvancedTest {
         ByteBuffer buf = generator2.createCabinet();
         ParsedCab pc = parse(buf);
         assertEquals(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_MSZIP.getValue(), pc.folderTypeCompress[0]);
+        assertTrue(pc.dataCbData[0] <= pc.dataCbUncomp[0]);
     }
 
     @Test

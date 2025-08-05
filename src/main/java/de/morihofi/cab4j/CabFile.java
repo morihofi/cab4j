@@ -9,7 +9,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.List;
 
 /**
  * @deprecated use {@link CabArchive} together with {@link CabGenerator} instead.
@@ -23,10 +22,6 @@ public class CabFile extends CabArchive {
 
     public ByteBuffer createCabinet() throws IOException {
         return generator.createCabinet();
-    }
-
-    public List<ByteBuffer> createCabinetSet(long maxCabinetSize) throws IOException {
-        return generator.createCabinetSet(maxCabinetSize);
     }
 
     public boolean isEnableChecksum() {

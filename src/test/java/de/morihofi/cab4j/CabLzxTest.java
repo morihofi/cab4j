@@ -19,11 +19,10 @@ public class CabLzxTest {
         archive.addFile("hello.c", hello);
         CabGenerator generator = new CabGenerator(archive);
         generator.setCompressionType(CfFolder.COMPRESS_TYPE.TCOMP_TYPE_LZX);
-        ByteBuffer buf = generator.createCabinet();
-        Map<String, ByteBuffer> extracted = CabExtractor.extract(buf);
-        byte[] orig = TestData.HELLO_C;
-        byte[] out = new byte[extracted.get("hello.c").remaining()];
-        extracted.get("hello.c").duplicate().get(out);
-        assertArrayEquals(orig, out);
+
+        ByteBuffer cab = generator.createCabinet();
+        Map<String, ByteBuffer> extracted = CabExtractor.extract(cab);
+
+        assertArrayEquals(TestData.HELLO_C, TestData.toArray(extracted.get("hello.c")));
     }
 }

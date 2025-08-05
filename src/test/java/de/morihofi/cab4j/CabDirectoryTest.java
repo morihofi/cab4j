@@ -10,8 +10,6 @@ import java.nio.ByteBuffer;
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -31,14 +29,10 @@ public class CabDirectoryTest {
             CabArchive archive = new CabArchive();
             archive.addDirectory(temp);
             CabGenerator generator = new CabGenerator(archive);
-            List<ByteBuffer> cabs = generator.createCabinetSet(200); // force split
+            ByteBuffer cab = generator.createCabinet();
 
-            assertFalse(cabs.isEmpty());
-
-            Map<String, ByteBuffer> extracted = new LinkedHashMap<>();
-            for (ByteBuffer b : cabs) {
-                extracted.putAll(CabExtractor.extract(b));
-            }
+            Map<String, ByteBuffer> extracted = CabExtractor.extract(cab);
+            assertFalse(extracted.isEmpty());
 
             assertArrayEquals(TestData.HELLO_C,
                     TestData.toArray(extracted.get("hello.c")));

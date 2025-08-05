@@ -23,16 +23,17 @@ public class CabFileValidationTest {
 
     @Test
     public void allowMaxFileSize() {
-        ByteBuffer maxBuf = ByteBuffer.allocate(CabArchive.MAX_FILE_SIZE);
         CabArchive archive = new CabArchive();
-        assertDoesNotThrow(() -> archive.addFile("max", maxBuf));
+        assertDoesNotThrow(() ->
+                archive.addFile("max", new java.io.ByteArrayInputStream(new byte[0]),
+                        CabArchive.MAX_FILE_SIZE, (short) 0, (short) 0, java.time.LocalDateTime.now()));
     }
 
     @Test
     public void rejectTooLargeFile() {
-        ByteBuffer tooBig = ByteBuffer.allocate(CabArchive.MAX_FILE_SIZE + 1);
         CabArchive archive2 = new CabArchive();
         assertThrows(IllegalArgumentException.class,
-                () -> archive2.addFile("big", tooBig));
+                () -> archive2.addFile("big", new java.io.ByteArrayInputStream(new byte[0]),
+                        CabArchive.MAX_FILE_SIZE + 1L, (short) 0, (short) 0, java.time.LocalDateTime.now()));
     }
 }

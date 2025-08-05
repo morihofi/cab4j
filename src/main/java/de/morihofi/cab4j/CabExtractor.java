@@ -5,13 +5,16 @@ import de.morihofi.cab4j.structures.CfFolder;
 import de.morihofi.cab4j.util.ChecksumHelper;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.DosFileAttributeView;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 
 public class CabExtractor {
 
@@ -225,6 +228,206 @@ public class CabExtractor {
 
     public static Map<String, ExtractedFile> extractWithAttributes(ByteBuffer cabBuffer) {
         return extractInternal(cabBuffer);
+    }
+
+    /**
+     * Extracts a cabinet from the supplied {@link ReadableByteChannel} directly
+     * to the given output directory using streaming and without holding the full
+     * file contents in memory. Only uncompressed cabinets created by the
+     * streaming {@link de.morihofi.cab4j.generator.CabGenerator} are supported.
+     */
+    public static void extractToDirectory(ReadableByteChannel in, Path outputDir) throws IOException {
+        ByteBuffer hdr = ByteBuffer.allocate(36);
+        readFully(in, hdr);
+        hdr.order(ByteOrder.LITTLE_ENDIAN);
+        hdr.flip();
+        byte[] sig = new byte[4];
+        hdr.get(sig);
+        if (sig[0] != 'M' || sig[1] != 'S' || sig[2] != 'C' || sig[3] != 'F') {
+            throw new IllegalArgumentException("Invalid CAB file");
+        }
+        hdr.getInt(); // reserved1
+        hdr.getInt(); // cbCabinet
+        hdr.getInt(); // reserved2
+        int coffFiles = hdr.getInt();
+        hdr.getInt(); // reserved3
+        hdr.get(); // version minor
+        hdr.get(); // version major
+        short cFolders = hdr.getShort();
+        short cFiles = hdr.getShort();
+        hdr.getShort(); // flags
+        hdr.getShort(); // setID
+        hdr.getShort(); // iCabinet
+
+        int[] folderCoffCabStart = new int[cFolders];
+        int[] folderCCfData = new int[cFolders];
+        short[] folderType = new short[cFolders];
+        for (int i = 0; i < cFolders; i++) {
+            ByteBuffer fb = ByteBuffer.allocate(8);
+            fb.order(ByteOrder.LITTLE_ENDIAN);
+            readFully(in, fb);
+            fb.flip();
+            folderCoffCabStart[i] = fb.getInt();
+            folderCCfData[i] = Short.toUnsignedInt(fb.getShort());
+            folderType[i] = fb.getShort();
+        }
+
+        // read file headers
+        class FileInfo {
+            String name;
+            int size;
+            int uoff;
+            short folder;
+        }
+        FileInfo[] infos = new FileInfo[cFiles];
+        for (int i = 0; i < cFiles; i++) {
+            ByteBuffer fb = ByteBuffer.allocate(16);
+            fb.order(ByteOrder.LITTLE_ENDIAN);
+            readFully(in, fb);
+            fb.flip();
+            FileInfo fi = new FileInfo();
+            fi.size = fb.getInt();
+            fi.uoff = fb.getInt();
+            fi.folder = fb.getShort();
+            fb.getShort(); // date
+            fb.getShort(); // time
+            fb.getShort(); // attribs
+            ByteArrayOutputStream nameBuf = new ByteArrayOutputStream();
+            ByteBuffer one = ByteBuffer.allocate(1);
+            while (true) {
+                one.clear();
+                readFully(in, one);
+                one.flip();
+                byte b = one.get();
+                if (b == 0) break;
+                nameBuf.write(b);
+            }
+            fi.name = new String(nameBuf.toByteArray(), StandardCharsets.UTF_8);
+            infos[i] = fi;
+        }
+
+        // prepare output channels per folder
+        Map<Integer, List<FileInfo>> filesPerFolder = new LinkedHashMap<>();
+        for (FileInfo fi : infos) {
+            filesPerFolder.computeIfAbsent((int) fi.folder, k -> new ArrayList<>()).add(fi);
+        }
+        for (List<FileInfo> list : filesPerFolder.values()) {
+            list.sort(Comparator.comparingInt(f -> f.uoff));
+        }
+
+        ByteBuffer dataBuf = ByteBuffer.allocate(0xFFFF);
+        for (int f = 0; f < cFolders; f++) {
+            List<FileInfo> list = filesPerFolder.get(f);
+            if (list == null) continue;
+            Iterator<FileInfo> it = list.iterator();
+            FileInfo current = it.next();
+            Path out = outputDir.resolve(current.name);
+            Files.createDirectories(out.getParent());
+            WritableByteChannel fileOut = Files.newByteChannel(out, java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                    java.nio.file.StandardOpenOption.WRITE);
+            int writtenForCurrent = 0;
+
+            for (int j = 0; j < folderCCfData[f]; j++) {
+                ByteBuffer db = ByteBuffer.allocate(8);
+                db.order(ByteOrder.LITTLE_ENDIAN);
+                readFully(in, db);
+                db.flip();
+                int csum = db.getInt();
+                int cbData = Short.toUnsignedInt(db.getShort());
+                int cbUncomp = Short.toUnsignedInt(db.getShort());
+                dataBuf.clear();
+                if (dataBuf.capacity() < cbData) {
+                    dataBuf = ByteBuffer.allocate(cbData);
+                }
+                dataBuf.limit(cbData);
+                readFully(in, dataBuf);
+                dataBuf.flip();
+
+                ByteBuffer checksumBuf = ByteBuffer.allocate(cbData + 4);
+                checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
+                checksumBuf.putShort((short) cbData);
+                checksumBuf.putShort((short) cbUncomp);
+                checksumBuf.put(dataBuf.duplicate());
+                checksumBuf.flip();
+                int calc = ChecksumHelper.cabChecksum(checksumBuf);
+                if (calc != csum) {
+                    throw new IOException("CFDATA checksum mismatch");
+                }
+
+                ByteBuffer uncompressed;
+                CfFolder.COMPRESS_TYPE comp = CfFolder.COMPRESS_TYPE.fromValue(Short.toUnsignedInt(folderType[f]));
+                switch (comp) {
+                    case TCOMP_TYPE_MSZIP:
+                        if (dataBuf.remaining() < 2 || dataBuf.get() != 'C' || dataBuf.get() != 'K') {
+                            throw new IOException("Invalid MSZIP signature");
+                        }
+                        byte[] compBytes = new byte[dataBuf.remaining()];
+                        dataBuf.get(compBytes);
+                        java.util.zip.Inflater inflater = new java.util.zip.Inflater(true);
+                        inflater.setInput(compBytes);
+                        byte[] outArr = new byte[cbUncomp];
+                        try {
+                            int written = inflater.inflate(outArr);
+                            if (written < outArr.length) {
+                                outArr = java.util.Arrays.copyOf(outArr, written);
+                            }
+                        } catch (java.util.zip.DataFormatException e) {
+                            throw new IOException("MSZIP decompression failed", e);
+                        } finally {
+                            inflater.end();
+                        }
+                        uncompressed = ByteBuffer.wrap(outArr);
+                        break;
+                    case TCOMP_TYPE_LZX:
+                    case TCOMP_TYPE_QUANTUM:
+                        byte[] lzBytes = new byte[dataBuf.remaining()];
+                        dataBuf.get(lzBytes);
+                        java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(lzBytes);
+                        byte[] lzOut = new byte[cbUncomp];
+                        try (org.tukaani.xz.XZInputStream xz = new org.tukaani.xz.XZInputStream(bis)) {
+                            int len = xz.read(lzOut);
+                            if (len < lzOut.length) {
+                                lzOut = java.util.Arrays.copyOf(lzOut, len);
+                            }
+                        }
+                        uncompressed = ByteBuffer.wrap(lzOut);
+                        break;
+                    case TCOMP_TYPE_NONE:
+                    default:
+                        uncompressed = dataBuf.duplicate();
+                        break;
+                }
+
+                while (uncompressed.hasRemaining()) {
+                    int toWrite = Math.min(uncompressed.remaining(), current.size - writtenForCurrent);
+                    ByteBuffer slice = uncompressed.slice();
+                    slice.limit(toWrite);
+                    fileOut.write(slice);
+                    uncompressed.position(uncompressed.position() + toWrite);
+                    writtenForCurrent += toWrite;
+                    if (writtenForCurrent >= current.size && it.hasNext()) {
+                        fileOut.close();
+                        current = it.next();
+                        out = outputDir.resolve(current.name);
+                        Files.createDirectories(out.getParent());
+                        fileOut = Files.newByteChannel(out, java.nio.file.StandardOpenOption.CREATE,
+                                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                                java.nio.file.StandardOpenOption.WRITE);
+                        writtenForCurrent = 0;
+                    }
+                }
+            }
+            fileOut.close();
+        }
+    }
+
+    private static void readFully(ReadableByteChannel ch, ByteBuffer buf) throws IOException {
+        while (buf.hasRemaining()) {
+            if (ch.read(buf) < 0) {
+                throw new IOException("Unexpected end of stream");
+            }
+        }
     }
 
     public static void extractToDirectory(ByteBuffer cabBuffer, Path outputDir, boolean restoreAttributes) throws IOException {

@@ -3,7 +3,9 @@ package de.morihofi.cab4j.archive;
 import de.morihofi.cab4j.file.FileUtils;
 import de.morihofi.cab4j.structures.CfFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,13 +40,15 @@ public class CabArchive {
      * Internal representation of a file within the archive.
      */
     public static class FileEntry {
-        public final ByteBuffer data;
+        public final InputStream in;
+        public final long size;
         public final short attribs;
         public final short folder;
         public final java.time.LocalDateTime lastModified;
 
-        public FileEntry(ByteBuffer data, short attribs, short folder, java.time.LocalDateTime ts) {
-            this.data = data;
+        public FileEntry(InputStream in, long size, short attribs, short folder, java.time.LocalDateTime ts) {
+            this.in = in;
+            this.size = size;
             this.attribs = attribs;
             this.folder = folder;
             this.lastModified = ts;
@@ -74,20 +78,15 @@ public class CabArchive {
      * Add a file with all options available.
      */
     public void addFile(String filename, ByteBuffer bytes, short attribs, short folder, java.time.LocalDateTime timestamp) {
-        if (files.size() >= MAX_FILES) {
-            throw new IllegalArgumentException("CAB File limit reached");
-        }
-        if (bytes.remaining() > MAX_FILE_SIZE) {
-            throw new IllegalArgumentException(
-                    "Byte size for file \"" + filename + "\" is too large (" + bytes.remaining()
-                            + " bytes). Max allowed size is " + MAX_FILE_SIZE + " bytes");
-        }
-        files.put(filename, new FileEntry(bytes, attribs, folder, timestamp));
+        byte[] arr = new byte[bytes.remaining()];
+        bytes.duplicate().get(arr);
+        addFile(filename, new ByteArrayInputStream(arr), arr.length, attribs, folder, timestamp);
     }
 
     /** Convenience method using a byte array. */
     public void addFile(String filename, byte[] bytes) {
-        addFile(filename, ByteBuffer.wrap(bytes), (short) 0, (short) 0, java.time.LocalDateTime.now());
+        addFile(filename, new ByteArrayInputStream(bytes), bytes.length, (short) 0, (short) 0,
+                java.time.LocalDateTime.now());
     }
 
     /**
@@ -95,7 +94,8 @@ public class CabArchive {
      * and modification time when available.
      */
     public void addFile(String filename, Path path) throws IOException {
-        ByteBuffer data = FileUtils.readFile(path);
+        InputStream in = Files.newInputStream(path);
+        long size = FileUtils.getFileSize(path);
         short attribs = 0;
         try {
             DosFileAttributes dos = Files.readAttributes(path, DosFileAttributes.class);
@@ -108,7 +108,24 @@ public class CabArchive {
         }
         FileTime ft = Files.getLastModifiedTime(path);
         java.time.LocalDateTime ts = java.time.LocalDateTime.ofInstant(ft.toInstant(), java.time.ZoneId.systemDefault());
-        addFile(filename, data, attribs, (short) 0, ts);
+        addFile(filename, in, size, attribs, (short) 0, ts);
+    }
+
+    /**
+     * Add a file using an {@link InputStream}. The stream will be consumed when
+     * the cabinet is generated.
+     */
+    public void addFile(String name, InputStream in, long size, short attribs, short folder,
+                        java.time.LocalDateTime ts) {
+        if (files.size() >= MAX_FILES) {
+            throw new IllegalArgumentException("CAB File limit reached");
+        }
+        if (size > MAX_FILE_SIZE) {
+            throw new IllegalArgumentException(
+                    "Byte size for file \"" + name + "\" is too large (" + size
+                            + " bytes). Max allowed size is " + MAX_FILE_SIZE + " bytes");
+        }
+        files.put(name, new FileEntry(in, size, attribs, folder, ts));
     }
 
     /**
