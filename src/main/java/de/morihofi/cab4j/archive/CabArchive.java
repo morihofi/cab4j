@@ -12,8 +12,10 @@ import java.nio.file.Path;
 import java.nio.file.attribute.DosFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Represents the contents of a cabinet archive. It merely stores file data and
@@ -161,17 +163,15 @@ public class CabArchive {
      * cabinet mirrors the relative path to the supplied directory.
      */
     public void addDirectory(Path directory) throws IOException {
-        Files.walk(directory)
-                .filter(Files::isRegularFile)
-                .forEach(p -> {
-                    Path rel = directory.relativize(p);
-                    String name = rel.toString().replace('\\', '/');
-                    try {
-                        addFile(name, p);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        try (Stream<Path> paths = Files.walk(directory)) {
+            Iterator<Path> it = paths.filter(Files::isRegularFile).iterator();
+            while (it.hasNext()) {
+                Path p = it.next();
+                Path rel = directory.relativize(p);
+                String name = rel.toString().replace('\\', '/');
+                addFile(name, p);
+            }
+        }
     }
 
     /** Returns the stored file entries. */

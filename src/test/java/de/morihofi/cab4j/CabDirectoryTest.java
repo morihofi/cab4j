@@ -6,6 +6,7 @@ import de.morihofi.cab4j.archive.CabArchive;
 import de.morihofi.cab4j.generator.CabGenerator;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class CabDirectoryTest {
 
@@ -39,6 +41,14 @@ public class CabDirectoryTest {
             assertArrayEquals(TestData.WELCOME_C,
                     TestData.toArray(extracted.get("sub/welcome.c")));
         }
+    }
+
+    @Test
+    public void missingDirectoryThrowsIOException() throws Exception {
+        Path temp = Files.createTempDirectory("cabdir");
+        Path missing = temp.resolve("missing");
+        CabArchive archive = new CabArchive();
+        assertThrows(IOException.class, () -> archive.addDirectory(missing));
     }
 
 }
