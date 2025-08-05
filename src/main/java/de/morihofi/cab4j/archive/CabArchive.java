@@ -42,12 +42,26 @@ public class CabArchive {
      * Internal representation of a file within the archive.
      */
     public static class FileEntry {
+        /** Input stream supplying the file data. */
         public final InputStream in;
+        /** Uncompressed file size in bytes. */
         public final long size;
+        /** DOS file attributes. */
         public final short attribs;
+        /** Folder index the file belongs to. */
         public final short folder;
+        /** Last modification timestamp. */
         public final java.time.LocalDateTime lastModified;
 
+        /**
+         * Creates a new file entry.
+         *
+         * @param in      input stream with the file contents
+         * @param size    uncompressed file size
+         * @param attribs DOS file attributes
+         * @param folder  folder index within the cabinet
+         * @param ts      last modification timestamp
+         */
         public FileEntry(InputStream in, long size, short attribs, short folder, java.time.LocalDateTime ts) {
             this.in = in;
             this.size = size;

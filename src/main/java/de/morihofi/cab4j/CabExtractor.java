@@ -16,11 +16,20 @@ import java.nio.file.attribute.DosFileAttributeView;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+/**
+ * Utility for extracting the contents of cabinet files.
+ */
 public class CabExtractor {
 
+    /**
+     * Represents a file extracted from a cabinet including metadata.
+     */
     public static class ExtractedFile {
+        /** Extracted file contents. */
         public final ByteBuffer data;
+        /** DOS file attributes of the original file. */
         public final short attribs;
+        /** Last modification timestamp. */
         public final java.time.LocalDateTime lastModified;
 
         ExtractedFile(ByteBuffer data, short attribs, java.time.LocalDateTime lm) {
@@ -217,6 +226,12 @@ public class CabExtractor {
         return result;
     }
 
+    /**
+     * Extracts all files from the supplied cabinet buffer.
+     *
+     * @param cabBuffer cabinet data
+     * @return mapping of file names to their contents
+     */
     public static Map<String, ByteBuffer> extract(ByteBuffer cabBuffer) {
         Map<String, ExtractedFile> withAttribs = extractInternal(cabBuffer);
         Map<String, ByteBuffer> res = new LinkedHashMap<>();
@@ -226,6 +241,12 @@ public class CabExtractor {
         return res;
     }
 
+    /**
+     * Extracts all files including their DOS attributes and modification times.
+     *
+     * @param cabBuffer cabinet data
+     * @return mapping of file names to extracted file metadata
+     */
     public static Map<String, ExtractedFile> extractWithAttributes(ByteBuffer cabBuffer) {
         return extractInternal(cabBuffer);
     }
@@ -235,6 +256,9 @@ public class CabExtractor {
      * to the given output directory using streaming and without holding the full
      * file contents in memory. Only uncompressed cabinets created by the
      * streaming {@link de.morihofi.cab4j.generator.CabGenerator} are supported.
+     *
+     * @param in        channel providing the cabinet data
+     * @param outputDir directory to write the extracted files to
      */
     public static void extractToDirectory(ReadableByteChannel in, Path outputDir) throws IOException {
         ByteBuffer hdr = ByteBuffer.allocate(36);
@@ -430,6 +454,13 @@ public class CabExtractor {
         }
     }
 
+    /**
+     * Extracts the cabinet contained in the given buffer into a directory.
+     *
+     * @param cabBuffer         cabinet data
+     * @param outputDir         directory to write the extracted files to
+     * @param restoreAttributes whether to restore DOS attributes and timestamps
+     */
     public static void extractToDirectory(ByteBuffer cabBuffer, Path outputDir, boolean restoreAttributes) throws IOException {
         Map<String, ExtractedFile> files = extractInternal(cabBuffer);
         for (Map.Entry<String, ExtractedFile> entry : files.entrySet()) {

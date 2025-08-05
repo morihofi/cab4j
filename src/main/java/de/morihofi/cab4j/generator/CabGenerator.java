@@ -43,6 +43,11 @@ public class CabGenerator {
     private short cabinetIndex = 0;
     private CfFolder.COMPRESS_TYPE compressionType = CfFolder.COMPRESS_TYPE.TCOMP_TYPE_NONE;
 
+    /**
+     * Creates a new generator operating on the given archive.
+     *
+     * @param archive the source archive that supplies files for the cabinet
+     */
     public CabGenerator(CabArchive archive) {
         this.archive = archive;
     }
@@ -237,18 +242,34 @@ public class CabGenerator {
         return ByteBuffer.wrap(bos.toByteArray());
     }
 
+    /**
+     * Returns whether CFDATA checksums are written.
+     */
     public boolean isEnableChecksum() {
         return enableChecksum;
     }
 
+    /**
+     * Enables or disables writing CFDATA checksums.
+     *
+     * @param enableChecksum {@code true} to generate checksums
+     */
     public void setEnableChecksum(boolean enableChecksum) {
         this.enableChecksum = enableChecksum;
     }
 
+    /**
+     * Returns the compression type used for data blocks.
+     */
     public CfFolder.COMPRESS_TYPE getCompressionType() {
         return compressionType;
     }
 
+    /**
+     * Sets the compression type used for data blocks.
+     *
+     * @param compressionType the compression algorithm to apply
+     */
     public void setCompressionType(CfFolder.COMPRESS_TYPE compressionType) {
         this.compressionType = compressionType;
     }
