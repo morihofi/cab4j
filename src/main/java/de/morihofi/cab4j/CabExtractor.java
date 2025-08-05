@@ -62,14 +62,13 @@ public class CabExtractor {
         buffer.getShort(); // setID
         buffer.getShort(); // iCabinet
 
-        // folders (only first is used)
-        // TODO: support multiple folders
+        // read folder descriptors (multiple folders are supported)
         int[] folderCoffCabStart = new int[cFolders];
-        short[] folderCCfData = new short[cFolders];
+        int[] folderCCfData = new int[cFolders];
         short[] folderTypeCompress = new short[cFolders];
         for (int i = 0; i < cFolders; i++) {
             folderCoffCabStart[i] = buffer.getInt();
-            folderCCfData[i] = buffer.getShort();
+            folderCCfData[i] = Short.toUnsignedInt(buffer.getShort());
             folderTypeCompress[i] = buffer.getShort();
         }
 
@@ -110,18 +109,18 @@ public class CabExtractor {
             CfFolder.COMPRESS_TYPE comp = CfFolder.COMPRESS_TYPE.fromValue(Short.toUnsignedInt(folderTypeCompress[i]));
             java.io.ByteArrayOutputStream folderOut = new java.io.ByteArrayOutputStream();
 
-            for (int j = 0; j < Short.toUnsignedInt(folderCCfData[i]); j++) {
+            for (int j = 0; j < folderCCfData[i]; j++) {
                 int csum = buffer.getInt();
-                short cbData = buffer.getShort();
-                short cbUncomp = buffer.getShort();
+                int cbData = Short.toUnsignedInt(buffer.getShort());
+                int cbUncomp = Short.toUnsignedInt(buffer.getShort());
 
                 ByteBuffer dataSlice = buffer.slice();
-                dataSlice.limit(Short.toUnsignedInt(cbData));
+                dataSlice.limit(cbData);
 
-                ByteBuffer checksumBuf = ByteBuffer.allocate(Short.toUnsignedInt(cbData) + 4);
+                ByteBuffer checksumBuf = ByteBuffer.allocate(cbData + 4);
                 checksumBuf.order(ByteOrder.LITTLE_ENDIAN);
-                checksumBuf.putShort(cbData);
-                checksumBuf.putShort(cbUncomp);
+                checksumBuf.putShort((short) cbData);
+                checksumBuf.putShort((short) cbUncomp);
                 checksumBuf.put(dataSlice.duplicate());
                 checksumBuf.flip();
                 int calculated = ChecksumHelper.cabChecksum(checksumBuf);
@@ -132,7 +131,7 @@ public class CabExtractor {
                 ByteBuffer uncompressed;
                 switch (comp) {
                     case TCOMP_TYPE_NONE:
-                        uncompressed = ByteBuffer.allocate(Short.toUnsignedInt(cbUncomp));
+                        uncompressed = ByteBuffer.allocate(cbUncomp);
                         uncompressed.put(dataSlice.duplicate());
                         uncompressed.flip();
                         break;
@@ -144,7 +143,7 @@ public class CabExtractor {
                         dataSlice.get(compBytes);
                         java.util.zip.Inflater inflater = new java.util.zip.Inflater(true);
                         inflater.setInput(compBytes);
-                        byte[] out = new byte[Short.toUnsignedInt(cbUncomp)];
+                        byte[] out = new byte[cbUncomp];
                         try {
                             int written = inflater.inflate(out);
                             if (written < out.length) {
@@ -163,7 +162,7 @@ public class CabExtractor {
                         byte[] qBytes = new byte[dataSlice.remaining()];
                         dataSlice.get(qBytes);
                         java.io.ByteArrayInputStream qbis = new java.io.ByteArrayInputStream(qBytes);
-                        byte[] qOut = new byte[Short.toUnsignedInt(cbUncomp)];
+                        byte[] qOut = new byte[cbUncomp];
                         try (org.tukaani.xz.XZInputStream qlz = new org.tukaani.xz.XZInputStream(qbis)) {
                             int qlen = qlz.read(qOut);
                             if (qlen < qOut.length) {
@@ -180,7 +179,7 @@ public class CabExtractor {
                         byte[] lzxBytes = new byte[dataSlice.remaining()];
                         dataSlice.get(lzxBytes);
                         java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(lzxBytes);
-                        byte[] lzxOut = new byte[Short.toUnsignedInt(cbUncomp)];
+                        byte[] lzxOut = new byte[cbUncomp];
                         try (org.tukaani.xz.XZInputStream lz = new org.tukaani.xz.XZInputStream(bis)) {
                             int len = lz.read(lzxOut);
                             if (len < lzxOut.length) {
@@ -201,7 +200,7 @@ public class CabExtractor {
                 uncompressed.duplicate().get(arr);
                 folderOut.write(arr, 0, arr.length);
 
-                buffer.position(buffer.position() + Short.toUnsignedInt(cbData));
+                buffer.position(buffer.position() + cbData);
             }
 
             folders.put(i, ByteBuffer.wrap(folderOut.toByteArray()));
@@ -209,9 +208,10 @@ public class CabExtractor {
 
         Map<String, ExtractedFile> result = new LinkedHashMap<>();
         for (FileHeader fe : files) {
-            ByteBuffer folder = folders.get((int) fe.iFolder);
+            int folderIndex = Short.toUnsignedInt(fe.iFolder);
+            ByteBuffer folder = folders.get(folderIndex);
             if (folder == null) {
-                throw new IllegalStateException("Missing folder data for iFolder " + fe.iFolder);
+                throw new IllegalStateException("Missing folder data for iFolder " + folderIndex);
             }
             ByteBuffer dup = folder.duplicate();
             dup.position(fe.uoffFolderStart);
@@ -333,7 +333,7 @@ public class CabExtractor {
         // prepare output channels per folder
         Map<Integer, List<FileInfo>> filesPerFolder = new LinkedHashMap<>();
         for (FileInfo fi : infos) {
-            filesPerFolder.computeIfAbsent((int) fi.folder, k -> new ArrayList<>()).add(fi);
+            filesPerFolder.computeIfAbsent(Short.toUnsignedInt(fi.folder), k -> new ArrayList<>()).add(fi);
         }
         for (List<FileInfo> list : filesPerFolder.values()) {
             list.sort(Comparator.comparingInt(f -> f.uoff));
