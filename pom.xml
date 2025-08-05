@@ -6,7 +6,7 @@
 
     <groupId>de.morihofi.cab4j</groupId>
     <artifactId>cab4j</artifactId>
-    <version>0.1.0-beta2</version>
+    <version>0.1.1-beta</version>
     <licenses>
         <license>
             <name>MIT License</name>
